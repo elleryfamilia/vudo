@@ -12,6 +12,38 @@ native auth prompt showing what will run.
 vudo <command> [args...]
 ```
 
+## Install
+
+**Linux / macOS — one line:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/elleryfamilia/vudo/main/install.sh | sh
+```
+
+This downloads the prebuilt binary for your platform from the latest
+[release][releases page], verifies its SHA-256 checksum, and installs it to
+`~/.local/bin` (override with `VUDO_INSTALL_DIR`). Prefer to read before you
+pipe to a shell? The script is [install.sh](install.sh).
+
+**From source** (any platform with a Rust toolchain):
+
+```sh
+cargo install --git https://github.com/elleryfamilia/vudo
+```
+
+**Windows:** download the `.zip` from the [releases page], and put `vudo.exe`
+somewhere on your `PATH`.
+
+## Updating
+
+```sh
+vudo --update
+```
+
+Replaces the running binary in place with the latest release for your platform
+(SHA-256 verified). `vudo --version` prints the current version. Self-update
+isn't supported on Windows yet — re-download from the [releases page].
+
 ## Examples
 
 ```sh
@@ -20,8 +52,8 @@ vudo systemctl restart nginx
 vudo rm -rf /var/tmp/junk
 ```
 
-Everything after `vudo` is the command run as root. There are no options except
-`--help`.
+Everything after `vudo` is the command run as root. A few options are reserved
+when they come first: `--help`, `--version`, `--update`.
 
 ## How it works
 
@@ -57,38 +89,6 @@ reliable signal even when the name isn't.
 - Windows: UAC shows its own consent prompt and runs the command in a separate
   elevated process, so the command's output isn't captured — only its exit code
   is returned. The preview is a separate message box shown before UAC.
-
-## Install
-
-**Linux / macOS — one line:**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/elleryfamilia/vudo/main/install.sh | sh
-```
-
-This downloads the prebuilt binary for your platform from the latest
-[release][releases page], verifies its SHA-256 checksum, and installs it to
-`~/.local/bin` (override with `VUDO_INSTALL_DIR`). Prefer to read before you
-pipe to a shell? The script is [install.sh](install.sh).
-
-**From source** (any platform with a Rust toolchain):
-
-```sh
-cargo install --git https://github.com/elleryfamilia/vudo
-```
-
-**Windows:** download the `.zip` from the [releases page], and put `vudo.exe`
-somewhere on your `PATH`.
-
-## Updating
-
-```sh
-vudo --update
-```
-
-Replaces the running binary in place with the latest release for your platform
-(SHA-256 verified). `vudo --version` prints the current version. Self-update
-isn't supported on Windows yet — re-download from the [releases page].
 
 ## Build & test
 
