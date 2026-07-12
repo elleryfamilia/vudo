@@ -2,20 +2,22 @@
 //! so the user can see where a root prompt originated — their own terminal vs.
 //! an agent/automation (e.g. an AI coding CLI).
 //!
-//! We show a single, meaningful name: the nearest ancestor that isn't a plain
-//! shell. Shells are pass-through noise (`vudo` is almost always spawned by
-//! one), so the interesting actor is the first non-shell above them — `claude`
-//! rather than `zsh`, or the terminal emulator when you run it yourself.
+//! We show a single, meaningful name: the nearest ancestor that isn't a shell
+//! or a pass-through wrapper (`timeout`, `env`, `nohup`, `sudo`, …). Those are
+//! noise — `vudo` is almost always spawned through one — so the interesting
+//! actor is the first "real" process above them: `claude` rather than `zsh` or
+//! `timeout`, or the terminal emulator when you run it yourself.
 //!
 //! Computed in the MAIN vudo process: its parent is the real caller. (The
 //! askpass helper is a separate sudo-spawned child, so it receives the result
 //! via env rather than recomputing it.)
 
 /// From a parent-first chain of process names, pick the nearest one that isn't
-/// a shell; fall back to the immediate parent, then "unknown".
+/// a shell or pass-through wrapper; fall back to the immediate parent, then
+/// "unknown".
 pub fn pick(chain: &[String]) -> String {
     for name in chain {
-        if !is_shell(name) {
+        if !is_passthrough(name) {
             return name.clone();
         }
     }
@@ -25,22 +27,20 @@ pub fn pick(chain: &[String]) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn is_shell(name: &str) -> bool {
+/// Shells and thin wrappers that merely relay to another program — not the
+/// actor we want to attribute the invocation to.
+fn is_passthrough(name: &str) -> bool {
     let lower = name.trim_start_matches('-').to_ascii_lowercase();
     let base = lower.strip_suffix(".exe").unwrap_or(lower.as_str());
     matches!(
         base,
-        "sh" | "bash"
-            | "zsh"
-            | "dash"
-            | "fish"
-            | "ksh"
-            | "tcsh"
-            | "csh"
-            | "ash"
-            | "pwsh"
-            | "powershell"
-            | "cmd"
+        // shells
+        "sh" | "bash" | "zsh" | "dash" | "fish" | "ksh" | "tcsh" | "csh" | "ash"
+            | "pwsh" | "powershell" | "cmd"
+        // pass-through wrappers / launchers
+            | "timeout" | "env" | "nohup" | "nice" | "ionice" | "stdbuf"
+            | "setsid" | "time" | "sudo" | "doas" | "su" | "watch"
+            | "script" | "unbuffer" | "xargs"
     )
 }
 
@@ -127,6 +127,12 @@ mod tests {
     #[test]
     fn picks_first_non_shell() {
         assert_eq!(pick(&v(&["zsh", "claude", "zsh", "cosmic-term"])), "claude");
+    }
+
+    #[test]
+    fn skips_wrappers_like_timeout_and_env() {
+        assert_eq!(pick(&v(&["timeout", "zsh", "claude"])), "claude");
+        assert_eq!(pick(&v(&["env", "nohup", "myapp"])), "myapp");
     }
 
     #[test]
