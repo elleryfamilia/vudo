@@ -42,34 +42,35 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
     }
 }
 
-/// Best-effort parent-process chain (starting from our own parent), so the
-/// user can see what asked for elevation. Falls back to "unknown".
+/// Best-effort caller name, so the user can see what asked for elevation:
+/// walk the parent chain via CIM and let the shared picker choose the nearest
+/// non-shell ancestor. Falls back to "unknown".
 fn caller() -> String {
     let mypid = std::process::id();
-    // Walk ParentProcessId up to 6 levels via CIM, skipping vudo itself (d=0).
+    // Emit each ancestor's name on its own line, parent-first, skipping vudo
+    // itself (d=0). The Rust side picks the first non-shell.
     let script = format!(
-        "$id={mypid}; $names=@(); $d=0; \
-         while ($d -lt 6) {{ \
+        "$id={mypid}; $d=0; \
+         while ($d -lt 8) {{ \
            $p = Get-CimInstance Win32_Process -Filter \"ProcessId=$id\" -ErrorAction SilentlyContinue; \
            if (-not $p) {{ break }}; \
-           if ($d -ge 1) {{ $names += $p.Name }}; \
+           if ($d -ge 1) {{ Write-Output $p.Name }}; \
            $id = $p.ParentProcessId; \
            if (-not $id) {{ break }}; \
            $d++ \
-         }}; \
-         $names -join ' <- '"
+         }}"
     );
     match Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()
     {
         Ok(o) if o.status.success() => {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if s.is_empty() {
-                "unknown".to_string()
-            } else {
-                s
-            }
+            let chain: Vec<String> = String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+            crate::caller::pick(&chain)
         }
         _ => "unknown".to_string(),
     }

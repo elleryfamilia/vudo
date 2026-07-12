@@ -41,10 +41,11 @@ straight to sudo; it never touches argv, the environment, disk, or a log. If
 sudo credentials are already cached, `vudo` runs straight through with no
 prompt.
 
-The dialog also shows a **Requested by:** line — the parent-process chain that
-invoked `vudo` (e.g. `zsh ← cosmic-term` when you run it yourself, or a chain
-containing your terminal-driving tool/agent when something else does). This
-lets you see where a root prompt actually originated before authorizing it.
+The dialog also shows a **Requested by:** line naming what invoked `vudo` — the
+nearest ancestor process that isn't a shell (shells are skipped as noise). When
+you run it yourself that's your terminal (e.g. `cosmic-term`); when a tool or
+agent runs it, that tool's name appears instead (e.g. `claude`). This lets you
+see where a root prompt actually originated before authorizing it.
 
 **Notes**
 

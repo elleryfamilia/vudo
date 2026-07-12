@@ -13,7 +13,6 @@
 
 mod quote;
 
-#[cfg(unix)]
 mod caller;
 #[cfg(target_os = "linux")]
 mod linux;
