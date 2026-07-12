@@ -1,0 +1,28 @@
+[package]
+name = "vudo"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Run a command as root with a graphical prompt that previews the exact command first."
+authors = ["Ellery <ellery@familia.me>"]
+license = "MIT"
+repository = "https://github.com/elleryfamilia/vudo"
+homepage = "https://github.com/elleryfamilia/vudo"
+readme = "README.md"
+keywords = ["sudo", "root", "privilege", "uac", "polkit"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "vudo"
+path = "src/main.rs"
+
+# Unix needs geteuid() to detect an already-root invocation. No deps on Windows.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "z"
+panic = "abort"
+codegen-units = 1

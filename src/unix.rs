@@ -1,0 +1,137 @@
+//! Shared Unix (Linux + macOS) elevation via `sudo -A`.
+//!
+//! We use `sudo -A` (askpass) rather than `sudo -S` (password on stdin) so the
+//! command's stdin/tty stay free — interactive root commands like `pacman -Syu`
+//! ("Proceed? [Y/n]") still work. sudo obtains the password by exec'ing a tiny
+//! wrapper script that re-invokes this same binary as `__askpass`, which then
+//! shows the platform password dialog and prints the password on stdout. The
+//! password never touches argv, our environment, disk, or a log.
+
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+
+/// Entry point when sudo execs us as the askpass helper.
+pub fn askpass_mode() -> ! {
+    let preview = std::env::var("VUDO_PREVIEW").unwrap_or_else(|_| "a command".to_string());
+
+    #[cfg(target_os = "linux")]
+    let pw = crate::linux::ask_password(&preview);
+    #[cfg(target_os = "macos")]
+    let pw = crate::macos::ask_password(&preview);
+
+    match pw {
+        Some(p) => {
+            // sudo reads one line and strips the trailing newline; no newline needed.
+            let _ = std::io::stdout().write_all(p.as_bytes());
+            std::process::exit(0);
+        }
+        None => std::process::exit(1), // cancelled -> auth failure
+    }
+}
+
+pub fn elevate(cmd: &[String], preview: &str) -> i32 {
+    // Already root — run it directly.
+    if is_root() {
+        return run_inherit(&cmd[0], &cmd[1..], &[]);
+    }
+
+    // sudo credentials still cached — no prompt needed.
+    if sudo_cached() {
+        let mut args = vec!["-n".to_string(), "--".to_string()];
+        args.extend_from_slice(cmd);
+        return run_inherit("sudo", &args, &[]);
+    }
+
+    // On macOS with Touch ID, show the preview once up front (the biometric
+    // sheet can't display it), then let pam_tid authorize.
+    #[cfg(target_os = "macos")]
+    if crate::macos::has_touch_id() && !crate::macos::confirm(preview) {
+        eprintln!("vudo: cancelled");
+        return 130;
+    }
+
+    let wrapper = match AskpassWrapper::new() {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("vudo: could not set up askpass helper: {e}");
+            return 1;
+        }
+    };
+
+    let mut args = vec!["-A".to_string(), "--".to_string()];
+    args.extend_from_slice(cmd);
+    run_inherit(
+        "sudo",
+        &args,
+        &[("SUDO_ASKPASS", wrapper.path()), ("VUDO_PREVIEW", preview)],
+    )
+}
+
+fn is_root() -> bool {
+    // SAFETY: geteuid is always safe to call.
+    unsafe { libc::geteuid() == 0 }
+}
+
+fn sudo_cached() -> bool {
+    Command::new("sudo")
+        .args(["-n", "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn run_inherit(program: &str, args: &[String], env: &[(&str, &str)]) -> i32 {
+    let mut c = Command::new(program);
+    c.args(args);
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    match c.status() {
+        Ok(s) => s.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("vudo: failed to run {program}: {e}");
+            127
+        }
+    }
+}
+
+/// A temp `#!/bin/sh` wrapper that re-invokes this binary as `__askpass`.
+/// Removed on drop.
+struct AskpassWrapper {
+    dir: PathBuf,
+    file: PathBuf,
+}
+
+impl AskpassWrapper {
+    fn new() -> std::io::Result<Self> {
+        let exe = std::env::current_exe()?;
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("vudo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir)?;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+
+        let file = dir.join("askpass");
+        let script = format!(
+            "#!/bin/sh\nexec {} __askpass \"$@\"\n",
+            crate::quote::shell_quote(&exe.to_string_lossy())
+        );
+        std::fs::write(&file, script)?;
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o700))?;
+        Ok(Self { dir, file })
+    }
+
+    fn path(&self) -> &str {
+        self.file.to_str().unwrap_or("")
+    }
+}
+
+impl Drop for AskpassWrapper {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
