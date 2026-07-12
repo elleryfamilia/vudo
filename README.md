@@ -41,6 +41,15 @@ straight to sudo; it never touches argv, the environment, disk, or a log. If
 sudo credentials are already cached, `vudo` runs straight through with no
 prompt.
 
+The dialog also shows a **Requested by:** line so you can see where a root
+prompt originated before authorizing it. It names the nearest ancestor process
+that isn't a shell or pass-through wrapper (`timeout`, `env`, `sudo`, …) — your
+terminal (e.g. `cosmic-term`) when you run it yourself, or the tool that
+launched it (e.g. `claude`) otherwise. It also flags whether the caller had a
+controlling terminal — `interactive terminal` (a human at a keyboard) vs.
+`⚠ no terminal (automation)`. The name is best-effort; the terminal flag is a
+reliable signal even when the name isn't.
+
 **Notes**
 
 - Linux: install `zenity` (or `kdialog`) for the most reliable dialog; pinentry
