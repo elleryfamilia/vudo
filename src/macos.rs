@@ -22,12 +22,14 @@ pub fn has_touch_id() -> bool {
 }
 
 /// Preview-only confirmation dialog (used ahead of the Touch ID sheet).
-pub fn confirm(preview: &str) -> bool {
+pub fn confirm(preview: &str, caller: &str) -> bool {
     let script = format!(
         "display dialog \"vudo will run this command as root:\" & return & return & {} \
+         & return & return & \"Requested by: \" & {} \
          with title \"vudo\" with icon caution \
          buttons {{\"Cancel\", \"Run as root\"}} default button \"Run as root\"",
-        apple_str(preview)
+        apple_str(preview),
+        apple_str(caller)
     );
     Command::new("osascript")
         .args(["-e", &script])
@@ -39,15 +41,17 @@ pub fn confirm(preview: &str) -> bool {
 }
 
 /// Password dialog that also previews the command. Returns None on cancel.
-pub fn ask_password(preview: &str) -> Option<String> {
+pub fn ask_password(preview: &str, caller: &str) -> Option<String> {
     let script = format!(
         "display dialog \"vudo will run this command as root:\" & return & return & {} \
+         & return & return & \"Requested by: \" & {} \
          & return & return & \"Enter your password to authorize.\" \
          with title \"vudo\" with icon caution \
          default answer \"\" with hidden answer \
          buttons {{\"Cancel\", \"Run as root\"}} default button \"Run as root\"\n\
          return text returned of result",
-        apple_str(preview)
+        apple_str(preview),
+        apple_str(caller)
     );
     let out = Command::new("osascript")
         .args(["-e", &script])

@@ -15,11 +15,12 @@ use std::process::{Command, Stdio};
 /// Entry point when sudo execs us as the askpass helper.
 pub fn askpass_mode() -> ! {
     let preview = std::env::var("VUDO_PREVIEW").unwrap_or_else(|_| "a command".to_string());
+    let caller = std::env::var("VUDO_CALLER").unwrap_or_else(|_| "unknown".to_string());
 
     #[cfg(target_os = "linux")]
-    let pw = crate::linux::ask_password(&preview);
+    let pw = crate::linux::ask_password(&preview, &caller);
     #[cfg(target_os = "macos")]
-    let pw = crate::macos::ask_password(&preview);
+    let pw = crate::macos::ask_password(&preview, &caller);
 
     match pw {
         Some(p) => {
@@ -44,10 +45,14 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
         return run_inherit("sudo", &args, &[]);
     }
 
+    // Who invoked us — shown in the dialog so the user can see where a root
+    // prompt came from (their shell vs. an agent/automation).
+    let caller = crate::caller::describe();
+
     // On macOS with Touch ID, show the preview once up front (the biometric
     // sheet can't display it), then let pam_tid authorize.
     #[cfg(target_os = "macos")]
-    if crate::macos::has_touch_id() && !crate::macos::confirm(preview) {
+    if crate::macos::has_touch_id() && !crate::macos::confirm(preview, &caller) {
         eprintln!("vudo: cancelled");
         return 130;
     }
@@ -65,7 +70,11 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
     run_inherit(
         "sudo",
         &args,
-        &[("SUDO_ASKPASS", wrapper.path()), ("VUDO_PREVIEW", preview)],
+        &[
+            ("SUDO_ASKPASS", wrapper.path()),
+            ("VUDO_PREVIEW", preview),
+            ("VUDO_CALLER", caller.as_str()),
+        ],
     )
 }
 

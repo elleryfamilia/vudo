@@ -5,9 +5,9 @@
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-pub fn ask_password(preview: &str) -> Option<String> {
+pub fn ask_password(preview: &str, caller: &str) -> Option<String> {
     let body = format!(
-        "vudo will run this command as root:\n\n{preview}\n\nEnter your password to authorize."
+        "vudo will run this command as root:\n\n{preview}\n\nRequested by:  {caller}\n\nEnter your password to authorize."
     );
 
     if have("zenity") {

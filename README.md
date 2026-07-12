@@ -41,6 +41,11 @@ straight to sudo; it never touches argv, the environment, disk, or a log. If
 sudo credentials are already cached, `vudo` runs straight through with no
 prompt.
 
+The dialog also shows a **Requested by:** line — the parent-process chain that
+invoked `vudo` (e.g. `zsh ← cosmic-term` when you run it yourself, or a chain
+containing your terminal-driving tool/agent when something else does). This
+lets you see where a root prompt actually originated before authorizing it.
+
 **Notes**
 
 - Linux: install `zenity` (or `kdialog`) for the most reliable dialog; pinentry

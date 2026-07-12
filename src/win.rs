@@ -10,7 +10,7 @@
 use std::process::{Command, Stdio};
 
 pub fn elevate(cmd: &[String], preview: &str) -> i32 {
-    if !confirm(preview) {
+    if !confirm(preview, &caller()) {
         eprintln!("vudo: cancelled");
         return 130;
     }
@@ -42,10 +42,44 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
     }
 }
 
-fn confirm(preview: &str) -> bool {
+/// Best-effort parent-process chain (starting from our own parent), so the
+/// user can see what asked for elevation. Falls back to "unknown".
+fn caller() -> String {
+    let mypid = std::process::id();
+    // Walk ParentProcessId up to 6 levels via CIM, skipping vudo itself (d=0).
+    let script = format!(
+        "$id={mypid}; $names=@(); $d=0; \
+         while ($d -lt 6) {{ \
+           $p = Get-CimInstance Win32_Process -Filter \"ProcessId=$id\" -ErrorAction SilentlyContinue; \
+           if (-not $p) {{ break }}; \
+           if ($d -ge 1) {{ $names += $p.Name }}; \
+           $id = $p.ParentProcessId; \
+           if (-not $id) {{ break }}; \
+           $d++ \
+         }}; \
+         $names -join ' <- '"
+    );
+    match Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+    {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() {
+                "unknown".to_string()
+            } else {
+                s
+            }
+        }
+        _ => "unknown".to_string(),
+    }
+}
+
+fn confirm(preview: &str, caller: &str) -> bool {
     let msg = format!(
-        "vudo will run this command as administrator:`n`n{}`n`nProceed?",
-        ps_literal(preview)
+        "vudo will run this command as administrator:`n`n{}`n`nRequested by: {}`n`nProceed?",
+        ps_literal(preview),
+        ps_literal(caller)
     );
     let script = format!(
         "Add-Type -AssemblyName System.Windows.Forms | Out-Null; \
