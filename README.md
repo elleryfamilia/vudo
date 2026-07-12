@@ -51,15 +51,25 @@ prompt.
 
 ## Install
 
-Prebuilt binaries are published on the [releases page]. Or build from source:
+**Linux / macOS — one line:**
 
 ```sh
-cargo install --path .        # from a clone
-# or
-cargo install vudo            # from crates.io (once published)
+curl -fsSL https://raw.githubusercontent.com/elleryfamilia/vudo/main/install.sh | sh
 ```
 
-Drop the resulting `vudo` binary anywhere on your `PATH`.
+This downloads the prebuilt binary for your platform from the latest
+[release][releases page], verifies its SHA-256 checksum, and installs it to
+`~/.local/bin` (override with `VUDO_INSTALL_DIR`). Prefer to read before you
+pipe to a shell? The script is [install.sh](install.sh).
+
+**From source** (any platform with a Rust toolchain):
+
+```sh
+cargo install --git https://github.com/elleryfamilia/vudo
+```
+
+**Windows:** download the `.zip` from the [releases page], and put `vudo.exe`
+somewhere on your `PATH`.
 
 ## Build & test
 
