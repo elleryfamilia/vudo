@@ -10,7 +10,9 @@
 use std::process::{Command, Stdio};
 
 pub fn elevate(cmd: &[String], preview: &str) -> i32 {
-    if !confirm(preview, &caller()) {
+    use std::io::IsTerminal;
+    let interactive = Some(std::io::stdin().is_terminal());
+    if !confirm(preview, &caller(), interactive) {
         eprintln!("vudo: cancelled");
         return 130;
     }
@@ -76,12 +78,17 @@ fn caller() -> String {
     }
 }
 
-fn confirm(preview: &str, caller: &str) -> bool {
-    let msg = format!(
-        "vudo will run this command as administrator:`n`n{}`n`nRequested by: {}`n`nProceed?",
-        ps_literal(preview),
-        ps_literal(caller)
-    );
+fn confirm(preview: &str, caller: &str, interactive: Option<bool>) -> bool {
+    // Windows runs administrator, not "root"; the message box is plain text, so
+    // keep it ASCII (drop the ⚠/· used on Unix).
+    let info = crate::dialog::info_block(preview, caller, interactive)
+        .replace(
+            "Run this command as root:",
+            "Run this command as administrator:",
+        )
+        .replace('\u{26a0}', "(!)")
+        .replace('\u{00b7}', "-");
+    let msg = format!("{}`n`nProceed?", ps_multiline(&info));
     let script = format!(
         "Add-Type -AssemblyName System.Windows.Forms | Out-Null; \
          $r = [System.Windows.Forms.MessageBox]::Show('{msg}', 'vudo', 'OKCancel', 'Warning'); \
@@ -101,7 +108,11 @@ fn ps_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-/// Escape a value for embedding inside an existing single-quoted PS string.
-fn ps_literal(s: &str) -> String {
-    s.replace('\'', "''").replace(['\r', '\n'], " ")
+/// Escape a value for embedding inside a single-quoted PS string, turning
+/// newlines into PowerShell's `n line breaks.
+fn ps_multiline(s: &str) -> String {
+    s.replace('\'', "''")
+        .replace("\r\n", "`n")
+        .replace('\n', "`n")
+        .replace('\r', "`n")
 }

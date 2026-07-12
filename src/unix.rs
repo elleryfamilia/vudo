@@ -16,11 +16,16 @@ use std::process::{Command, Stdio};
 pub fn askpass_mode() -> ! {
     let preview = std::env::var("VUDO_PREVIEW").unwrap_or_else(|_| "a command".to_string());
     let caller = std::env::var("VUDO_CALLER").unwrap_or_else(|_| "unknown".to_string());
+    let interactive = match std::env::var("VUDO_INTERACTIVE").as_deref() {
+        Ok("1") => Some(true),
+        Ok("0") => Some(false),
+        _ => None,
+    };
 
     #[cfg(target_os = "linux")]
-    let pw = crate::linux::ask_password(&preview, &caller);
+    let pw = crate::linux::ask_password(&preview, &caller, interactive);
     #[cfg(target_os = "macos")]
-    let pw = crate::macos::ask_password(&preview, &caller);
+    let pw = crate::macos::ask_password(&preview, &caller, interactive);
 
     match pw {
         Some(p) => {
@@ -45,14 +50,17 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
         return run_inherit("sudo", &args, &[]);
     }
 
-    // Who invoked us — shown in the dialog so the user can see where a root
-    // prompt came from (their shell vs. an agent/automation).
+    // Who invoked us, and whether they had a controlling terminal — shown in
+    // the dialog so the user can see where a root prompt came from (their own
+    // terminal vs. an agent/automation).
     let caller = crate::caller::describe();
+    let interactive = has_controlling_terminal();
+    let interactive_env = if interactive { "1" } else { "0" };
 
     // On macOS with Touch ID, show the preview once up front (the biometric
     // sheet can't display it), then let pam_tid authorize.
     #[cfg(target_os = "macos")]
-    if crate::macos::has_touch_id() && !crate::macos::confirm(preview, &caller) {
+    if crate::macos::has_touch_id() && !crate::macos::confirm(preview, &caller, Some(interactive)) {
         eprintln!("vudo: cancelled");
         return 130;
     }
@@ -74,6 +82,7 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
             ("SUDO_ASKPASS", wrapper.path()),
             ("VUDO_PREVIEW", preview),
             ("VUDO_CALLER", caller.as_str()),
+            ("VUDO_INTERACTIVE", interactive_env),
         ],
     )
 }
@@ -81,6 +90,17 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
 fn is_root() -> bool {
     // SAFETY: geteuid is always safe to call.
     unsafe { libc::geteuid() == 0 }
+}
+
+/// Whether we have a controlling terminal — a reliable "a human at a keyboard
+/// launched this" signal. Opening /dev/tty succeeds only if one exists, and
+/// unlike an isatty(stdin) check it isn't fooled by redirected stdio
+/// (`vudo id > file` still counts as interactive).
+fn has_controlling_terminal() -> bool {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .open("/dev/tty")
+        .is_ok()
 }
 
 fn sudo_cached() -> bool {

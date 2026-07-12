@@ -22,14 +22,12 @@ pub fn has_touch_id() -> bool {
 }
 
 /// Preview-only confirmation dialog (used ahead of the Touch ID sheet).
-pub fn confirm(preview: &str, caller: &str) -> bool {
+pub fn confirm(preview: &str, caller: &str, interactive: Option<bool>) -> bool {
+    let msg = crate::dialog::info_block(preview, caller, interactive);
     let script = format!(
-        "display dialog \"vudo will run this command as root:\" & return & return & {} \
-         & return & return & \"Requested by: \" & {} \
-         with title \"vudo\" with icon caution \
+        "display dialog {} with title \"vudo\" with icon caution \
          buttons {{\"Cancel\", \"Run as root\"}} default button \"Run as root\"",
-        apple_str(preview),
-        apple_str(caller)
+        apple_text(&msg)
     );
     Command::new("osascript")
         .args(["-e", &script])
@@ -41,17 +39,18 @@ pub fn confirm(preview: &str, caller: &str) -> bool {
 }
 
 /// Password dialog that also previews the command. Returns None on cancel.
-pub fn ask_password(preview: &str, caller: &str) -> Option<String> {
+pub fn ask_password(preview: &str, caller: &str, interactive: Option<bool>) -> Option<String> {
+    let msg = format!(
+        "{}\n\nEnter your password to authorize.",
+        crate::dialog::info_block(preview, caller, interactive)
+    );
     let script = format!(
-        "display dialog \"vudo will run this command as root:\" & return & return & {} \
-         & return & return & \"Requested by: \" & {} \
-         & return & return & \"Enter your password to authorize.\" \
+        "display dialog {} \
          with title \"vudo\" with icon caution \
          default answer \"\" with hidden answer \
          buttons {{\"Cancel\", \"Run as root\"}} default button \"Run as root\"\n\
          return text returned of result",
-        apple_str(preview),
-        apple_str(caller)
+        apple_text(&msg)
     );
     let out = Command::new("osascript")
         .args(["-e", &script])
@@ -67,8 +66,16 @@ pub fn ask_password(preview: &str, caller: &str) -> Option<String> {
     Some(s)
 }
 
-/// AppleScript double-quoted string literal. Newlines are flattened to spaces
-/// (a command preview is single-line; AppleScript joins with `& return &`).
+/// AppleScript expression for a multi-line string: each line becomes a quoted
+/// literal joined with `& return &`, so newlines render as actual line breaks.
+fn apple_text(s: &str) -> String {
+    s.split('\n')
+        .map(apple_str)
+        .collect::<Vec<_>>()
+        .join(" & return & ")
+}
+
+/// AppleScript double-quoted string literal for a single line.
 fn apple_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -76,7 +83,7 @@ fn apple_str(s: &str) -> String {
         match c {
             '\\' => out.push_str("\\\\"),
             '"' => out.push_str("\\\""),
-            '\n' | '\r' => out.push(' '),
+            '\r' => {}
             _ => out.push(c),
         }
     }
