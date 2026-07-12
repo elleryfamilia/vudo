@@ -80,6 +80,16 @@ cargo install --git https://github.com/elleryfamilia/vudo
 **Windows:** download the `.zip` from the [releases page], and put `vudo.exe`
 somewhere on your `PATH`.
 
+## Updating
+
+```sh
+vudo --update
+```
+
+Replaces the running binary in place with the latest release for your platform
+(SHA-256 verified). `vudo --version` prints the current version. Self-update
+isn't supported on Windows yet — re-download from the [releases page].
+
 ## Build & test
 
 ```sh

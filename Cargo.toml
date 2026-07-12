@@ -1,6 +1,6 @@
 [package]
 name = "vudo"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.74"
 description = "Run a command as root with a graphical prompt that previews the exact command first."
