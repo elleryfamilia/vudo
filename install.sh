@@ -23,6 +23,7 @@ case "$os" in
   Linux)
     case "$arch" in
       x86_64 | amd64) target="x86_64-unknown-linux-musl" ;;
+      aarch64 | arm64) target="aarch64-unknown-linux-musl" ;;
       *) err "unsupported Linux arch '$arch' — build from source: cargo install --git https://github.com/$REPO" ;;
     esac ;;
   Darwin)
