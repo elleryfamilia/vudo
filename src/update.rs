@@ -139,11 +139,37 @@ fn apply(tag: &str) -> Result<String, String> {
 
 #[cfg(windows)]
 fn apply(tag: &str) -> Result<String, String> {
-    Err(format!(
-        "self-update isn't supported on Windows yet — download \
-         vudo-{tag}-x86_64-pc-windows-msvc.zip from \
-         https://github.com/{REPO}/releases/tag/{tag}"
-    ))
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe
+        .parent()
+        .ok_or("cannot locate the install directory")?
+        .to_str()
+        .ok_or("non-UTF-8 path")?
+        .replace('\'', "''");
+
+    // Reuse the PowerShell installer, pinned to this tag and targeting the
+    // current install dir. It moves the running exe aside and copies the new
+    // one in (a running .exe can be renamed but not overwritten on Windows).
+    let command = format!(
+        "$env:VUDO_INSTALL_DIR = '{dir}'; $env:VUDO_VERSION = '{}'; \
+         irm https://raw.githubusercontent.com/{REPO}/main/install.ps1 | iex",
+        tag.replace('\'', "''")
+    );
+    let status = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &command,
+        ])
+        .status()
+        .map_err(|e| format!("powershell: {e}"))?;
+    if status.success() {
+        Ok(exe.display().to_string())
+    } else {
+        Err("the PowerShell installer reported an error".to_string())
+    }
 }
 
 #[cfg(unix)]
