@@ -21,6 +21,7 @@ mod linux;
 mod macos;
 #[cfg(unix)]
 mod unix;
+mod update;
 #[cfg(windows)]
 mod win;
 
@@ -33,9 +34,23 @@ fn main() {
         unix::askpass_mode(); // diverges
     }
 
-    if args.is_empty() || args[0] == "-h" || args[0] == "--help" {
-        usage();
-        std::process::exit(if args.is_empty() { 2 } else { 0 });
+    // Reserved vudo options (only when they lead — everything else is the
+    // command to run as root).
+    match args.first().map(String::as_str) {
+        None => {
+            usage();
+            std::process::exit(2);
+        }
+        Some("-h") | Some("--help") => {
+            usage();
+            std::process::exit(0);
+        }
+        Some("-V") | Some("--version") => {
+            println!("vudo {}", env!("CARGO_PKG_VERSION"));
+            std::process::exit(0);
+        }
+        Some("--update") => std::process::exit(update::run()),
+        _ => {}
     }
 
     let preview = quote::preview(&args);
@@ -64,8 +79,12 @@ Examples:
   vudo systemctl restart nginx
   vudo rm -rf /var/tmp/junk
 
-Everything after \"vudo\" is the command that runs as root. There are no
-vudo options except --help.
+Options (only when they come first; otherwise treated as the command):
+  -h, --help       show this help
+  -V, --version    print the version
+      --update     replace this binary with the latest release
+
+Everything else after \"vudo\" is the command that runs as root.
 "
     );
 }
