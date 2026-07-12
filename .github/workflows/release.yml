@@ -8,8 +8,20 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    name: create release
+    runs-on: ubuntu-latest
+    steps:
+      # Create the GitHub release once, up front, so the parallel build jobs
+      # only ever upload assets to an existing release — never race to create
+      # it (which drops assets when two jobs create concurrently).
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+
   build:
     name: build ${{ matrix.target }}
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
