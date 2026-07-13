@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="vudo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#231C13"/>
+      <stop offset="1" stop-color="#141109"/>
+    </linearGradient>
+  </defs>
+  <!-- rounded-square app tile in the brand's dark tone -->
+  <rect x="20" y="20" width="472" height="472" rx="108" fill="url(#bg)" stroke="#3A3226" stroke-width="4"/>
+  <!-- the mark: the "v" as a checkmark (approval) in brand amber -->
+  <path d="M150 262 L232 352 L374 168" fill="none" stroke="#F2A33C" stroke-width="50"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

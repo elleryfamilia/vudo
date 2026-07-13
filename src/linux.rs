@@ -17,27 +17,32 @@ pub fn ask_password(
     );
 
     if have("zenity") {
-        return run_capture(
-            "zenity",
-            &[
-                "--entry".to_string(),
-                "--hide-text".to_string(),
-                "--title=vudo".to_string(),
-                format!("--text={body}"),
-            ],
-        );
+        let mut args = vec![
+            "--entry".to_string(),
+            "--hide-text".to_string(),
+            "--title=vudo".to_string(),
+            format!("--text={body}"),
+        ];
+        // Best-effort brand icon on the window (zenity can't put one in the
+        // entry body, but this sets the title-bar/taskbar icon).
+        if let Some(p) = crate::icon::path() {
+            args.push(format!("--window-icon={p}"));
+        }
+        return run_capture("zenity", &args);
     }
 
     if have("kdialog") {
-        return run_capture(
-            "kdialog",
-            &[
-                "--title".to_string(),
-                "vudo".to_string(),
-                "--password".to_string(),
-                body,
-            ],
-        );
+        let mut args = vec![
+            "--title".to_string(),
+            "vudo".to_string(),
+            "--password".to_string(),
+            body,
+        ];
+        if let Some(p) = crate::icon::path() {
+            args.push("--icon".to_string());
+            args.push(p);
+        }
+        return run_capture("kdialog", &args);
     }
 
     if let Some(pe) = pinentry_bin() {

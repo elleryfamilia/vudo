@@ -25,9 +25,10 @@ pub fn has_touch_id() -> bool {
 pub fn confirm(preview: &str, caller: &str, interactive: Option<bool>, cache: bool) -> bool {
     let msg = crate::dialog::info_block(preview, caller, interactive, cache);
     let script = format!(
-        "display dialog {} with title \"vudo\" with icon caution \
+        "display dialog {} with title \"vudo\" {} \
          buttons {{\"Cancel\", \"Run as root\"}} default button \"Run as root\"",
-        apple_text(&msg)
+        apple_text(&msg),
+        icon_clause()
     );
     Command::new("osascript")
         .args(["-e", &script])
@@ -51,11 +52,12 @@ pub fn ask_password(
     );
     let script = format!(
         "display dialog {} \
-         with title \"vudo\" with icon caution \
+         with title \"vudo\" {} \
          default answer \"\" with hidden answer \
          buttons {{\"Cancel\", \"Run as root\"}} default button \"Run as root\"\n\
          return text returned of result",
-        apple_text(&msg)
+        apple_text(&msg),
+        icon_clause()
     );
     let out = Command::new("osascript")
         .args(["-e", &script])
@@ -69,6 +71,15 @@ pub fn ask_password(
         s.pop();
     }
     Some(s)
+}
+
+/// `with icon` clause using the brand icon when available, else the stock
+/// caution icon.
+fn icon_clause() -> String {
+    match crate::icon::path() {
+        Some(p) => format!("with icon (POSIX file {})", apple_str(&p)),
+        None => "with icon caution".to_string(),
+    }
 }
 
 /// AppleScript expression for a multi-line string: each line becomes a quoted
