@@ -37,17 +37,28 @@ pub fn askpass_mode() -> ! {
     }
 }
 
-pub fn elevate(cmd: &[String], preview: &str) -> i32 {
+pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
     // Already root — run it directly.
     if is_root() {
         return run_inherit(&cmd[0], &cmd[1..], &[]);
     }
 
-    // Every command is authorized on its own. vudo deliberately does NOT ride
-    // sudo's cached credential timestamp — otherwise, once you approved one
-    // command, later commands in the same session would run with no prompt.
-    // Clear the timestamp so a fresh authorization is always required.
-    reset_sudo_timestamp();
+    if cache {
+        // Opt-in (`-c`): reuse sudo's credential window instead of clearing it.
+        // If it's still valid, run with no prompt at all; otherwise authorize
+        // once below and leave the timestamp intact for the window.
+        if sudo_cached() {
+            let mut args = vec!["-n".to_string(), "--".to_string()];
+            args.extend_from_slice(cmd);
+            return run_inherit("sudo", &args, &[]);
+        }
+    } else {
+        // Default: authorize every command on its own. vudo does NOT ride
+        // sudo's cached timestamp — otherwise, once you approved one command,
+        // later commands in the session would run with no prompt. Clear it so a
+        // fresh authorization is always required.
+        reset_sudo_timestamp();
+    }
 
     // Who invoked us, and whether they had a controlling terminal — shown in
     // the dialog so the user can see where a root prompt came from (their own
@@ -85,9 +96,12 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
         ],
     );
 
-    // Don't leave a cached credential window open afterwards — the next
-    // privileged action, from vudo or anything else, must re-authorize.
-    reset_sudo_timestamp();
+    // Default mode: don't leave a cached credential window open afterwards —
+    // the next privileged action must re-authorize. In cache mode we keep the
+    // timestamp so the window works.
+    if !cache {
+        reset_sudo_timestamp();
+    }
     code
 }
 
@@ -116,6 +130,19 @@ fn reset_sudo_timestamp() {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
+}
+
+/// Whether sudo currently has a valid cached credential (used only in `--cache`
+/// mode). `sudo -n` never prompts; it succeeds only if no auth is needed.
+fn sudo_cached() -> bool {
+    Command::new("sudo")
+        .args(["-n", "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 fn run_inherit(program: &str, args: &[String], env: &[(&str, &str)]) -> i32 {

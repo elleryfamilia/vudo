@@ -55,9 +55,9 @@ fn main() {
             eprintln!("vudo: unknown option '{opt}' (try 'vudo --help')");
             std::process::exit(2);
         }
-        Action::Run(cmd) => {
+        Action::Run { cmd, cache } => {
             let preview = quote::preview(&cmd);
-            std::process::exit(elevate(&cmd, &preview));
+            std::process::exit(elevate(&cmd, &preview, cache));
         }
     }
 }
@@ -68,42 +68,57 @@ enum Action {
     Version,
     Update,
     UnknownOption(String),
-    Run(Vec<String>),
+    Run { cmd: Vec<String>, cache: bool },
 }
 
-/// Decide what a vudo invocation means. Reserved options are only recognized in
-/// the leading position; everything else is the command to run as root. A bare
-/// `--` ends option parsing, so a command whose name starts with `-` can still
-/// be run (`vudo -- --weird-tool`).
+/// Decide what a vudo invocation means. `--help`/`--version`/`--update` are
+/// recognized only as the leading token. Otherwise leading modifier flags
+/// (`-c`/`--cache`) are consumed, then everything else is the command to run as
+/// root. A bare `--` ends option parsing, so a command whose name starts with
+/// `-` can still be run (`vudo -- --weird-tool`).
 fn classify(args: Vec<String>) -> Action {
-    let first = match args.first() {
+    match args.first().map(String::as_str) {
         None => return Action::Empty,
-        Some(f) => f.clone(),
-    };
-    match first.as_str() {
-        "-h" | "--help" => Action::Help,
-        "-V" | "--version" => Action::Version,
-        "--update" => Action::Update,
-        "--" => {
-            let rest: Vec<String> = args.into_iter().skip(1).collect();
-            if rest.is_empty() {
-                Action::Empty
-            } else {
-                Action::Run(rest)
+        Some("-h") | Some("--help") => return Action::Help,
+        Some("-V") | Some("--version") => return Action::Version,
+        Some("--update") => return Action::Update,
+        _ => {}
+    }
+
+    let mut cache = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-c" | "--cache" => {
+                cache = true;
+                i += 1;
             }
+            "--" => {
+                i += 1;
+                break;
+            }
+            opt if opt.starts_with('-') => return Action::UnknownOption(opt.to_string()),
+            _ => break,
         }
-        opt if opt.starts_with('-') => Action::UnknownOption(opt.to_string()),
-        _ => Action::Run(args),
+    }
+
+    let cmd = args[i..].to_vec();
+    if cmd.is_empty() {
+        Action::Empty
+    } else {
+        Action::Run { cmd, cache }
     }
 }
 
 #[cfg(unix)]
-fn elevate(cmd: &[String], preview: &str) -> i32 {
-    unix::elevate(cmd, preview)
+fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
+    unix::elevate(cmd, preview, cache)
 }
 
+// UAC has no credential cache like sudo's timestamp, so `--cache` is a no-op on
+// Windows — every elevation prompts regardless.
 #[cfg(windows)]
-fn elevate(cmd: &[String], preview: &str) -> i32 {
+fn elevate(cmd: &[String], preview: &str, _cache: bool) -> i32 {
     win::elevate(cmd, preview)
 }
 
@@ -123,7 +138,10 @@ Options (only when they come first; otherwise treated as the command):
   -h, --help       show this help
   -V, --version    print the version
       --update     replace this binary with the latest release
+  -c, --cache      reuse sudo's credential window; skip re-auth for a few
+                   minutes instead of authorizing this one command
 
+By default every command is authorized on its own (no cached credentials).
 Everything else after \"vudo\" is the command that runs as root. Use \"--\" to
 end option parsing if the command's own name starts with a dash.
 "
@@ -171,17 +189,41 @@ mod tests {
     }
 
     #[test]
-    fn a_command_runs() {
+    fn a_command_runs_without_cache_by_default() {
         match classify(v(&["pacman", "-Syu"])) {
-            Action::Run(cmd) => assert_eq!(cmd, v(&["pacman", "-Syu"])),
+            Action::Run { cmd, cache } => {
+                assert_eq!(cmd, v(&["pacman", "-Syu"]));
+                assert!(!cache);
+            }
             _ => panic!("expected Run"),
         }
     }
 
     #[test]
+    fn cache_flag_sets_cache_and_keeps_command() {
+        for flag in ["-c", "--cache"] {
+            match classify(v(&[flag, "systemctl", "restart", "nginx"])) {
+                Action::Run { cmd, cache } => {
+                    assert_eq!(cmd, v(&["systemctl", "restart", "nginx"]));
+                    assert!(cache);
+                }
+                _ => panic!("expected Run"),
+            }
+        }
+    }
+
+    #[test]
+    fn cache_with_no_command_is_empty() {
+        assert!(matches!(classify(v(&["-c"])), Action::Empty));
+    }
+
+    #[test]
     fn double_dash_ends_options() {
-        match classify(v(&["--", "--weird-tool", "arg"])) {
-            Action::Run(cmd) => assert_eq!(cmd, v(&["--weird-tool", "arg"])),
+        match classify(v(&["-c", "--", "--weird-tool", "arg"])) {
+            Action::Run { cmd, cache } => {
+                assert_eq!(cmd, v(&["--weird-tool", "arg"]));
+                assert!(cache);
+            }
             _ => panic!("expected Run"),
         }
         assert!(matches!(classify(v(&["--"])), Action::Empty));
