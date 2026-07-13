@@ -85,9 +85,15 @@ to each OS's native agent, which is more secure and familiar:
 On Unix it uses `sudo -A` (askpass) rather than `sudo -S` (password on stdin),
 so the command's stdin/tty stay free — interactive root commands like
 `pacman -Syu` ("Proceed? [Y/n]") still work. The password goes from the dialog
-straight to sudo; it never touches argv, the environment, disk, or a log. If
-sudo credentials are already cached, `vudo` runs straight through with no
-prompt.
+straight to sudo; it never touches argv, the environment, disk, or a log.
+
+**Every command is authorized on its own.** vudo does not ride sudo's cached
+credential timestamp: it clears the timestamp before and after each run, so
+approving one command never grants a silent pass to the next. You authorize
+(dialog or Touch ID) every single time — which is the whole point when the
+caller might be an automation or agent. A side effect: a plain `sudo` you run
+in a terminal will also re-prompt after a `vudo` command, since the shared
+timestamp was cleared.
 
 The dialog also shows a **Requested by:** line so you can see where a root
 prompt originated before authorizing it. It names the nearest ancestor process

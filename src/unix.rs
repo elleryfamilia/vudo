@@ -43,12 +43,11 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
         return run_inherit(&cmd[0], &cmd[1..], &[]);
     }
 
-    // sudo credentials still cached — no prompt needed.
-    if sudo_cached() {
-        let mut args = vec!["-n".to_string(), "--".to_string()];
-        args.extend_from_slice(cmd);
-        return run_inherit("sudo", &args, &[]);
-    }
+    // Every command is authorized on its own. vudo deliberately does NOT ride
+    // sudo's cached credential timestamp — otherwise, once you approved one
+    // command, later commands in the same session would run with no prompt.
+    // Clear the timestamp so a fresh authorization is always required.
+    reset_sudo_timestamp();
 
     // Who invoked us, and whether they had a controlling terminal — shown in
     // the dialog so the user can see where a root prompt came from (their own
@@ -75,7 +74,7 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
 
     let mut args = vec!["-A".to_string(), "--".to_string()];
     args.extend_from_slice(cmd);
-    run_inherit(
+    let code = run_inherit(
         "sudo",
         &args,
         &[
@@ -84,7 +83,12 @@ pub fn elevate(cmd: &[String], preview: &str) -> i32 {
             ("VUDO_CALLER", caller.as_str()),
             ("VUDO_INTERACTIVE", interactive_env),
         ],
-    )
+    );
+
+    // Don't leave a cached credential window open afterwards — the next
+    // privileged action, from vudo or anything else, must re-authorize.
+    reset_sudo_timestamp();
+    code
 }
 
 fn is_root() -> bool {
@@ -103,15 +107,15 @@ fn has_controlling_terminal() -> bool {
         .is_ok()
 }
 
-fn sudo_cached() -> bool {
-    Command::new("sudo")
-        .args(["-n", "true"])
+/// Invalidate any cached sudo credentials so the next `sudo` must re-authorize.
+/// `sudo -k` never prompts and needs no privilege; it just clears the timestamp.
+fn reset_sudo_timestamp() {
+    let _ = Command::new("sudo")
+        .arg("-k")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .status();
 }
 
 fn run_inherit(program: &str, args: &[String], env: &[(&str, &str)]) -> i32 {
