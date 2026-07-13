@@ -4,6 +4,10 @@
     <img src="assets/wordmark-light.svg" alt="vudo" width="280">
   </picture>
 </p>
+<p align="center">
+  <img src="assets/hero.svg" width="860"
+       alt="An AI agent runs vudo; a native OS dialog previews the exact command, shows who requested it, and asks you to authorize or cancel.">
+</p>
 
 Run a command as root with a graphical prompt that **previews the exact
 command** before you authorize it. A single dependency-free binary for Linux,
