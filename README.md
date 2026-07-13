@@ -41,6 +41,19 @@ pipe to a shell? The script is [install.sh](install.sh).
 cargo install --git https://github.com/elleryfamilia/vudo
 ```
 
+### macOS: Touch ID
+
+For a native biometric prompt, enable Touch ID for sudo — add this line to
+`/etc/pam.d/sudo_local` (create it if missing):
+
+```
+auth       sufficient     pam_tid.so
+```
+
+vudo then shows its command-preview confirmation and lets sudo raise the system
+**Touch ID** sheet instead of a password dialog. (Works in a local terminal
+session, not over SSH.)
+
 **Windows — one line** (PowerShell):
 
 ```powershell

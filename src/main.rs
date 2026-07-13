@@ -15,6 +15,8 @@ mod quote;
 
 mod caller;
 mod dialog;
+#[cfg(unix)]
+mod icon;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
