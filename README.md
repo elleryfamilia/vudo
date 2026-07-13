@@ -1,4 +1,9 @@
-# vudo
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-dark.svg">
+    <img src="assets/wordmark-light.svg" alt="vudo" width="280">
+  </picture>
+</p>
 
 Run a command as root with a graphical prompt that **previews the exact
 command** before you authorize it. A single dependency-free binary for Linux,
@@ -7,6 +12,11 @@ macOS, and Windows.
 Built for contexts with no TTY to type a password into — an AI coding agent, a
 hotkey, a `!` shell escape. Instead of a terminal prompt, `vudo` pops your OS's
 native auth prompt showing what will run.
+
+<p align="center">
+  <img src="assets/hero.svg" width="860"
+       alt="An AI agent runs vudo; a native OS dialog previews the exact command, shows who requested it, and asks you to authorize or cancel.">
+</p>
 
 ```
 vudo <command> [args...]
