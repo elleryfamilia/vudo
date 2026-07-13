@@ -20,15 +20,15 @@
   <ellipse cx="872" cy="240" rx="380" ry="280" fill="url(#glow)"/>
 
   <!-- tagline -->
-  <text x="56" y="86" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="25" font-weight="650" fill="#EDE6DA">Give an agent root — with your eyes open.</text>
-  <text x="56" y="115" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15.5" fill="#8A857B">No TTY, no password on stdin. Nothing runs until you see it.</text>
+  <text x="56" y="86" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="25" font-weight="650" xml:space="preserve"><tspan fill="#F2A33C">sudo</tspan><tspan fill="#EDE6DA">, but the password prompt is a GUI.</tspan></text>
+  <text x="56" y="115" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15.5" fill="#8A857B">So an agent can ask you for root — and nothing runs until you see it.</text>
 
   <!-- the agent's terminal -->
   <rect x="56" y="146" width="480" height="216" rx="12" fill="#0D0B08" stroke="#292317" stroke-width="1.5"/>
   <circle cx="84" cy="174" r="5.5" fill="#3A3226"/>
   <circle cx="106" cy="174" r="5.5" fill="#3A3226"/>
   <circle cx="128" cy="174" r="5.5" fill="#3A3226"/>
-  <text x="84" y="234" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="16" fill="#8A857B"># agent has no TTY to type a password</text>
+  <text x="84" y="234" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="16" fill="#8A857B"># no TTY to type sudo's password into</text>
   <text x="84" y="282" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="19" xml:space="preserve"><tspan fill="#8A857B">! </tspan><tspan fill="#F2A33C" font-weight="700">vudo </tspan><tspan fill="#EDE6DA">systemctl restart nginx</tspan></text>
   <text x="84" y="330" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="19" fill="#8A857B">!</text>
   <rect x="107" y="312" width="13" height="24" rx="2" fill="#F2A33C" opacity="0.9"/>
