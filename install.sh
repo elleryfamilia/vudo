@@ -101,4 +101,17 @@ case ":$PATH:" in
     info "  echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> ~/.profile" ;;
 esac
 
+# macOS: offer to enable Touch ID for sudo. stdin is the piped script under
+# `curl | sh`, so read the answer from the terminal directly; skip silently if
+# there's no terminal (non-interactive install).
+if [ "$os" = "Darwin" ] && [ -r /dev/tty ]; then
+  printf 'vudo: enable Touch ID for sudo now? [y/N] ' > /dev/tty
+  reply=''
+  read -r reply < /dev/tty || reply=''
+  case "$reply" in
+    y | Y | yes | Yes) "$INSTALL_DIR/vudo" --setup-touch-id ;;
+    *) info "skipped Touch ID setup — run 'vudo --setup-touch-id' anytime" ;;
+  esac
+fi
+
 info "run 'vudo --help' to get started"
