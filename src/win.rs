@@ -80,8 +80,9 @@ fn caller() -> String {
 
 fn confirm(preview: &str, caller: &str, interactive: Option<bool>) -> bool {
     // Windows runs administrator, not "root"; the message box is plain text, so
-    // keep it ASCII (drop the ⚠/· used on Unix).
-    let info = crate::dialog::info_block(preview, caller, interactive)
+    // keep it ASCII (drop the ⚠/· used on Unix). --cache is a no-op under UAC,
+    // so never advertise caching here.
+    let info = crate::dialog::info_block(preview, caller, interactive, false)
         .replace(
             "Run this command as root:",
             "Run this command as administrator:",

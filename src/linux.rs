@@ -5,10 +5,15 @@
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-pub fn ask_password(preview: &str, caller: &str, interactive: Option<bool>) -> Option<String> {
+pub fn ask_password(
+    preview: &str,
+    caller: &str,
+    interactive: Option<bool>,
+    cache: bool,
+) -> Option<String> {
     let body = format!(
         "{}\n\nEnter your password to authorize.",
-        crate::dialog::info_block(preview, caller, interactive)
+        crate::dialog::info_block(preview, caller, interactive, cache)
     );
 
     if have("zenity") {

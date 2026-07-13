@@ -6,14 +6,22 @@
 ///
 /// `interactive` is whether the caller has a controlling terminal — a reliable
 /// "a human at a keyboard launched this" signal, independent of the (best-
-/// effort) `actor` name.
-pub fn info_block(preview: &str, actor: &str, interactive: Option<bool>) -> String {
+/// effort) `actor` name. `cache` is whether `--cache` is in effect, in which
+/// case the prompt tells the user their credentials will be kept.
+pub fn info_block(preview: &str, actor: &str, interactive: Option<bool>, cache: bool) -> String {
     let who = match interactive {
         Some(true) => format!("{actor}  \u{00b7} interactive terminal"),
         Some(false) => format!("\u{26a0} {actor}  \u{00b7} no terminal (automation)"),
         None => actor.to_string(),
     };
-    format!("Run this command as root:\n\n    {preview}\n\nRequested by:  {who}")
+    let mut block = format!("Run this command as root:\n\n    {preview}\n\nRequested by:  {who}");
+    if cache {
+        block.push_str(
+            "\n\n\u{26a0} --cache is on: your credentials will be kept for sudo's window, \
+             so later commands may run without prompting.",
+        );
+    }
+    block
 }
 
 #[cfg(test)]
@@ -22,15 +30,16 @@ mod tests {
 
     #[test]
     fn interactive_shows_terminal() {
-        let b = info_block("id", "cosmic-term", Some(true));
+        let b = info_block("id", "cosmic-term", Some(true), false);
         assert!(b.contains("    id"), "command is indented on its own line");
         assert!(b.contains("cosmic-term"));
         assert!(b.contains("interactive terminal"));
+        assert!(!b.contains("--cache"));
     }
 
     #[test]
     fn automation_is_flagged() {
-        let b = info_block("id", "claude", Some(false));
+        let b = info_block("id", "claude", Some(false), false);
         assert!(b.contains("claude"));
         assert!(b.contains("automation"));
         assert!(
@@ -41,8 +50,15 @@ mod tests {
 
     #[test]
     fn unknown_interactivity_just_names_actor() {
-        let b = info_block("id", "claude", None);
+        let b = info_block("id", "claude", None, false);
         assert!(b.contains("Requested by:  claude"));
         assert!(!b.contains("terminal"));
+    }
+
+    #[test]
+    fn cache_is_disclosed_in_the_prompt() {
+        let b = info_block("id", "cosmic-term", Some(true), true);
+        assert!(b.contains("--cache is on"));
+        assert!(b.contains("credentials will be kept"));
     }
 }

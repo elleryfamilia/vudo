@@ -21,11 +21,12 @@ pub fn askpass_mode() -> ! {
         Ok("0") => Some(false),
         _ => None,
     };
+    let cache = std::env::var("VUDO_CACHE").as_deref() == Ok("1");
 
     #[cfg(target_os = "linux")]
-    let pw = crate::linux::ask_password(&preview, &caller, interactive);
+    let pw = crate::linux::ask_password(&preview, &caller, interactive, cache);
     #[cfg(target_os = "macos")]
-    let pw = crate::macos::ask_password(&preview, &caller, interactive);
+    let pw = crate::macos::ask_password(&preview, &caller, interactive, cache);
 
     match pw {
         Some(p) => {
@@ -70,7 +71,9 @@ pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
     // On macOS with Touch ID, show the preview once up front (the biometric
     // sheet can't display it), then let pam_tid authorize.
     #[cfg(target_os = "macos")]
-    if crate::macos::has_touch_id() && !crate::macos::confirm(preview, &caller, Some(interactive)) {
+    if crate::macos::has_touch_id()
+        && !crate::macos::confirm(preview, &caller, Some(interactive), cache)
+    {
         eprintln!("vudo: cancelled");
         return 130;
     }
@@ -93,6 +96,7 @@ pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
             ("VUDO_PREVIEW", preview),
             ("VUDO_CALLER", caller.as_str()),
             ("VUDO_INTERACTIVE", interactive_env),
+            ("VUDO_CACHE", if cache { "1" } else { "0" }),
         ],
     );
 
@@ -123,21 +127,25 @@ fn has_controlling_terminal() -> bool {
 
 /// Invalidate any cached sudo credentials so the next `sudo` must re-authorize.
 /// `sudo -k` never prompts and needs no privilege; it just clears the timestamp.
+///
+/// stdin is inherited (not detached) so sudo sees the same controlling terminal
+/// as the real `sudo -A` command below. sudo's timestamp is keyed to the tty;
+/// detaching stdin would make this clear a *different* record than the one the
+/// command uses, leaving the real cache untouched.
 fn reset_sudo_timestamp() {
     let _ = Command::new("sudo")
         .arg("-k")
-        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 }
 
 /// Whether sudo currently has a valid cached credential (used only in `--cache`
-/// mode). `sudo -n` never prompts; it succeeds only if no auth is needed.
+/// mode). `sudo -n` never prompts; it succeeds only if no auth is needed. stdin
+/// is inherited so it checks the same tty-keyed record the command will use.
 fn sudo_cached() -> bool {
     Command::new("sudo")
         .args(["-n", "true"])
-        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
