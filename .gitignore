@@ -1,3 +1,9 @@
 /target
 *.log
 .DS_Store
+.loadout/generated/
+.loadout/cache/
+.loadout/logs/
+.loadout/local.toml
+CLAUDE.local.md
+.claude/commands/loadout/
