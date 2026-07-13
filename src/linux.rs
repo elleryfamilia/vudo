@@ -24,9 +24,10 @@ pub fn ask_password(
             format!("--text={body}"),
         ];
         // Best-effort brand icon on the window (zenity can't put one in the
-        // entry body, but this sets the title-bar/taskbar icon).
+        // entry body). `--icon` is the current option; `--window-icon` is
+        // deprecated in zenity 4 and prints a warning.
         if let Some(p) = crate::icon::path() {
-            args.push(format!("--window-icon={p}"));
+            args.push(format!("--icon={p}"));
         }
         return run_capture("zenity", &args);
     }
