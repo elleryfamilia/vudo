@@ -22,8 +22,8 @@ pub fn has_touch_id() -> bool {
 }
 
 /// Preview-only confirmation dialog (used ahead of the Touch ID sheet).
-pub fn confirm(preview: &str, caller: &str, interactive: Option<bool>) -> bool {
-    let msg = crate::dialog::info_block(preview, caller, interactive);
+pub fn confirm(preview: &str, caller: &str, interactive: Option<bool>, cache: bool) -> bool {
+    let msg = crate::dialog::info_block(preview, caller, interactive, cache);
     let script = format!(
         "display dialog {} with title \"vudo\" with icon caution \
          buttons {{\"Cancel\", \"Run as root\"}} default button \"Run as root\"",
@@ -39,10 +39,15 @@ pub fn confirm(preview: &str, caller: &str, interactive: Option<bool>) -> bool {
 }
 
 /// Password dialog that also previews the command. Returns None on cancel.
-pub fn ask_password(preview: &str, caller: &str, interactive: Option<bool>) -> Option<String> {
+pub fn ask_password(
+    preview: &str,
+    caller: &str,
+    interactive: Option<bool>,
+    cache: bool,
+) -> Option<String> {
     let msg = format!(
         "{}\n\nEnter your password to authorize.",
-        crate::dialog::info_block(preview, caller, interactive)
+        crate::dialog::info_block(preview, caller, interactive, cache)
     );
     let script = format!(
         "display dialog {} \
