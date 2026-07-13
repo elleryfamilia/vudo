@@ -2,6 +2,44 @@
 
 use std::process::{Command, Stdio};
 
+/// Enable Touch ID for sudo by adding `pam_tid` to the PAM config. Idempotent;
+/// writes to `/etc/pam.d/sudo_local` (which survives macOS updates) when the
+/// system includes it, else to `/etc/pam.d/sudo`. The privileged write goes
+/// through the normal vudo dialog so the user sees exactly what runs.
+pub fn setup_touch_id() -> i32 {
+    if has_touch_id() {
+        println!("vudo: Touch ID for sudo is already enabled.");
+        return 0;
+    }
+
+    // Sonoma+ ships /etc/pam.d/sudo with an `auth include sudo_local` line;
+    // there, sudo_local is the update-safe place for the pam_tid entry.
+    let uses_sudo_local = std::fs::read_to_string("/etc/pam.d/sudo")
+        .map(|s| s.contains("sudo_local"))
+        .unwrap_or(false);
+    let target = if uses_sudo_local {
+        "/etc/pam.d/sudo_local"
+    } else {
+        "/etc/pam.d/sudo"
+    };
+    let line = "auth       sufficient     pam_tid.so";
+
+    println!("vudo: this enables Touch ID for sudo by appending to {target}:");
+    println!("        {line}\n");
+
+    // Idempotent append, performed as root.
+    let script = format!("grep -qs pam_tid.so {target} || printf '%s\\n' '{line}' >> {target}");
+    let cmd = vec!["sh".to_string(), "-c".to_string(), script];
+    let preview = crate::quote::preview(&cmd);
+    let code = crate::unix::elevate(&cmd, &preview, false);
+
+    if code == 0 {
+        println!("\nvudo: Touch ID enabled. Keep this terminal open, then in a NEW terminal");
+        println!("      run 'sudo -k; sudo -v' — you should get the Touch ID sheet.");
+    }
+    code
+}
+
 /// True if `pam_tid` (Touch ID for sudo) is enabled in an uncommented auth
 /// line of the sudo PAM config.
 pub fn has_touch_id() -> bool {

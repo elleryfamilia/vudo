@@ -50,6 +50,7 @@ fn main() {
             std::process::exit(0);
         }
         Action::Update => std::process::exit(update::run()),
+        Action::SetupTouchId => std::process::exit(setup_touch_id()),
         Action::UnknownOption(opt) => {
             // A real command never starts with '-', so an unrecognized leading
             // option is a mistake — reject it instead of trying to run it as
@@ -69,6 +70,7 @@ enum Action {
     Help,
     Version,
     Update,
+    SetupTouchId,
     UnknownOption(String),
     Run { cmd: Vec<String>, cache: bool },
 }
@@ -84,6 +86,7 @@ fn classify(args: Vec<String>) -> Action {
         Some("-h") | Some("--help") => return Action::Help,
         Some("-V") | Some("--version") => return Action::Version,
         Some("--update") => return Action::Update,
+        Some("--setup-touch-id") => return Action::SetupTouchId,
         _ => {}
     }
 
@@ -124,6 +127,17 @@ fn elevate(cmd: &[String], preview: &str, _cache: bool) -> i32 {
     win::elevate(cmd, preview)
 }
 
+#[cfg(target_os = "macos")]
+fn setup_touch_id() -> i32 {
+    macos::setup_touch_id()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn setup_touch_id() -> i32 {
+    eprintln!("vudo: --setup-touch-id is macOS-only (Touch ID via pam_tid)");
+    1
+}
+
 fn usage() {
     eprint!(
         "vudo — run a command as root with a graphical prompt that previews the
@@ -137,11 +151,12 @@ Examples:
   vudo rm -rf /var/tmp/junk
 
 Options (only when they come first; otherwise treated as the command):
-  -h, --help       show this help
-  -V, --version    print the version
-      --update     replace this binary with the latest release
-  -c, --cache      reuse sudo's credential window; skip re-auth for a few
-                   minutes instead of authorizing this one command
+  -h, --help          show this help
+  -V, --version       print the version
+      --update        replace this binary with the latest release
+      --setup-touch-id  enable Touch ID for sudo (macOS only)
+  -c, --cache         reuse sudo's credential window; skip re-auth for a few
+                      minutes instead of authorizing this one command
 
 By default every command is authorized on its own (no cached credentials).
 Everything else after \"vudo\" is the command that runs as root. Use \"--\" to
@@ -174,6 +189,14 @@ mod tests {
     #[test]
     fn update_flag() {
         assert!(matches!(classify(v(&["--update"])), Action::Update));
+    }
+
+    #[test]
+    fn setup_touch_id_flag() {
+        assert!(matches!(
+            classify(v(&["--setup-touch-id"])),
+            Action::SetupTouchId
+        ));
     }
 
     #[test]

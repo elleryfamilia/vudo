@@ -43,16 +43,17 @@ cargo install --git https://github.com/elleryfamilia/vudo
 
 ### macOS: Touch ID
 
-For a native biometric prompt, enable Touch ID for sudo — add this line to
-`/etc/pam.d/sudo_local` (create it if missing):
+For a native biometric prompt, enable Touch ID for sudo:
 
-```
-auth       sufficient     pam_tid.so
+```sh
+vudo --setup-touch-id
 ```
 
-vudo then shows its command-preview confirmation and lets sudo raise the system
-**Touch ID** sheet instead of a password dialog. (Works in a local terminal
-session, not over SSH.)
+This adds `pam_tid` to `/etc/pam.d/sudo_local` (idempotent; shows exactly what
+it writes and authorizes once). The macOS installer also offers to do this for
+you. After that, vudo shows its command-preview confirmation and lets sudo
+raise the system **Touch ID** sheet instead of a password dialog. (Works in a
+local terminal session, not over SSH.)
 
 **Windows — one line** (PowerShell):
 
