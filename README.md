@@ -87,13 +87,28 @@ so the command's stdin/tty stay free — interactive root commands like
 `pacman -Syu` ("Proceed? [Y/n]") still work. The password goes from the dialog
 straight to sudo; it never touches argv, the environment, disk, or a log.
 
-**Every command is authorized on its own.** vudo does not ride sudo's cached
-credential timestamp: it clears the timestamp before and after each run, so
-approving one command never grants a silent pass to the next. You authorize
-(dialog or Touch ID) every single time — which is the whole point when the
-caller might be an automation or agent. A side effect: a plain `sudo` you run
-in a terminal will also re-prompt after a `vudo` command, since the shared
-timestamp was cleared.
+**Every command is authorized on its own.** By default vudo does not ride
+sudo's cached credential timestamp: it clears the timestamp before and after
+each run, so approving one command never grants a silent pass to the next. You
+authorize (dialog or Touch ID) every single time — which is the whole point
+when the caller might be an automation or agent. A side effect: a plain `sudo`
+you run in a terminal will also re-prompt after a `vudo` command, since the
+shared timestamp was cleared.
+
+If you want the convenience of a cache window, pass `-c` / `--cache`:
+
+```sh
+vudo --cache pacman -Syu
+```
+
+With `--cache`, vudo simply stops clearing the timestamp and leaves sudo's own
+caching in place. Whether a later command then skips the prompt is entirely
+sudo's call — governed by its normal rules, i.e. its per-terminal timestamp and
+`timestamp_timeout`. In a regular terminal that means repeated commands within
+the window won't re-prompt; in a context with no controlling terminal (e.g. an
+agent) sudo may not share the timestamp, so each command still prompts. To
+change the window length, set `timestamp_timeout` in `sudoers`. `--cache` has
+no effect on Windows, where UAC prompts for every elevation regardless.
 
 The dialog also shows a **Requested by:** line so you can see where a root
 prompt originated before authorizing it. It names the nearest ancestor process
