@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-label="An AI agent runs vudo; a native OS dialog previews the exact command, shows who requested it, and asks you to authorize.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#F2A33C"/>
+    </marker>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F2A33C" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#F2A33C" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softshadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dy="8"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- self-contained dark card: reads correctly on light and dark GitHub themes -->
+  <rect x="2" y="2" width="1196" height="596" rx="20" fill="#151310" stroke="#2A251C" stroke-width="2"/>
+  <ellipse cx="872" cy="240" rx="380" ry="280" fill="url(#glow)"/>
+
+  <!-- tagline -->
+  <text x="56" y="86" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="25" font-weight="650" fill="#EDE6DA">Give an agent root — with your eyes open.</text>
+  <text x="56" y="115" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15.5" fill="#8A857B">No TTY, no password on stdin. Nothing runs until you see it.</text>
+
+  <!-- the agent's terminal -->
+  <rect x="56" y="146" width="480" height="216" rx="12" fill="#0D0B08" stroke="#292317" stroke-width="1.5"/>
+  <circle cx="84" cy="174" r="5.5" fill="#3A3226"/>
+  <circle cx="106" cy="174" r="5.5" fill="#3A3226"/>
+  <circle cx="128" cy="174" r="5.5" fill="#3A3226"/>
+  <text x="84" y="234" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="16" fill="#8A857B"># agent has no TTY to type a password</text>
+  <text x="84" y="282" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="19" xml:space="preserve"><tspan fill="#8A857B">$ </tspan><tspan fill="#F2A33C" font-weight="700">vudo </tspan><tspan fill="#EDE6DA">systemctl restart nginx</tspan></text>
+  <text x="84" y="330" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="19" fill="#8A857B">$</text>
+  <rect x="107" y="312" width="13" height="24" rx="2" fill="#F2A33C" opacity="0.9"/>
+
+  <!-- hand-off arrow -->
+  <path d="M540 254 C 570 254, 566 240, 592 240" fill="none" stroke="#F2A33C" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- the native auth dialog -->
+  <rect x="600" y="64" width="544" height="352" rx="16" fill="#1D1913" stroke="#3A3226" stroke-width="1.5" filter="url(#softshadow)"/>
+
+  <!-- header: lock + title -->
+  <path d="M638 116 v-7 a8 8 0 0 1 16 0 v7" fill="none" stroke="#F2A33C" stroke-width="4" stroke-linecap="round"/>
+  <rect x="632" y="116" width="28" height="21" rx="4" fill="#F2A33C"/>
+  <text x="676" y="132" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" font-weight="600" fill="#EDE6DA">Authentication required</text>
+
+  <!-- the exact command -->
+  <text x="632" y="180" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12.5" font-weight="600" letter-spacing="1.6" fill="#8A857B">THE EXACT COMMAND, BEFORE IT RUNS</text>
+  <rect x="632" y="192" width="480" height="48" rx="8" fill="#0D0B08" stroke="#292317"/>
+  <text x="652" y="222" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="19" fill="#EDE6DA">systemctl restart nginx</text>
+
+  <!-- provenance -->
+  <text x="632" y="272" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15.5" xml:space="preserve"><tspan fill="#8A857B">Requested by: </tspan><tspan fill="#EDE6DA" font-weight="650">claude</tspan><tspan fill="#F2A33C">   ⚠ no terminal (automation)</tspan></text>
+
+  <line x1="632" y1="292" x2="1112" y2="292" stroke="#2A251C" stroke-width="1.5"/>
+
+  <!-- native auth row -->
+  <circle cx="648" cy="320" r="13" fill="none" stroke="#8A857B" stroke-width="2.5"/>
+  <circle cx="648" cy="320" r="4.5" fill="#8A857B"/>
+  <text x="674" y="326" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15" fill="#8A857B">Touch ID, password, or UAC — your OS's own prompt, not ours</text>
+
+  <!-- buttons: green is semantic (authorize), never brand -->
+  <rect x="856" y="352" width="110" height="40" rx="8" fill="none" stroke="#3A3226" stroke-width="1.5"/>
+  <text x="911" y="377" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15.5" fill="#EDE6DA">Cancel</text>
+  <rect x="982" y="352" width="130" height="40" rx="8" fill="#4CAF6E"/>
+  <text x="1047" y="377" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15.5" font-weight="650" fill="#0F1A12">Authorize</text>
+
+  <!-- why it's safe: three checks -->
+  <g stroke="#F2A33C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M80 502 l7 8 l15 -17"/>
+    <path d="M448 502 l7 8 l15 -17"/>
+    <path d="M816 502 l7 8 l15 -17"/>
+  </g>
+  <text x="116" y="510" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="17" fill="#EDE6DA">See the exact command</text>
+  <text x="484" y="510" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="17" fill="#EDE6DA">See who's asking</text>
+  <text x="852" y="510" font-family="ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="17" fill="#EDE6DA">Native OS auth only</text>
+  <text x="116" y="536" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13.5" fill="#8A857B">previewed verbatim in the dialog</text>
+  <text x="484" y="536" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13.5" fill="#8A857B">process chain + terminal check</text>
+  <text x="852" y="536" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13.5" fill="#8A857B">password never touches argv or disk</text>
+</svg>

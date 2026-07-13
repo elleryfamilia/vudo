@@ -1,4 +1,9 @@
-# vudo
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-dark.svg">
+    <img src="assets/wordmark-light.svg" alt="vudo" width="280">
+  </picture>
+</p>
 
 Run a command as root with a graphical prompt that **previews the exact
 command** before you authorize it. A single dependency-free binary for Linux,
@@ -7,6 +12,11 @@ macOS, and Windows.
 Built for contexts with no TTY to type a password into — an AI coding agent, a
 hotkey, a `!` shell escape. Instead of a terminal prompt, `vudo` pops your OS's
 native auth prompt showing what will run.
+
+<p align="center">
+  <img src="assets/hero.svg" width="860"
+       alt="An AI agent runs vudo; a native OS dialog previews the exact command, shows who requested it, and asks you to authorize or cancel.">
+</p>
 
 ```
 vudo <command> [args...]
@@ -75,9 +85,15 @@ to each OS's native agent, which is more secure and familiar:
 On Unix it uses `sudo -A` (askpass) rather than `sudo -S` (password on stdin),
 so the command's stdin/tty stay free — interactive root commands like
 `pacman -Syu` ("Proceed? [Y/n]") still work. The password goes from the dialog
-straight to sudo; it never touches argv, the environment, disk, or a log. If
-sudo credentials are already cached, `vudo` runs straight through with no
-prompt.
+straight to sudo; it never touches argv, the environment, disk, or a log.
+
+**Every command is authorized on its own.** vudo does not ride sudo's cached
+credential timestamp: it clears the timestamp before and after each run, so
+approving one command never grants a silent pass to the next. You authorize
+(dialog or Touch ID) every single time — which is the whole point when the
+caller might be an automation or agent. A side effect: a plain `sudo` you run
+in a terminal will also re-prompt after a `vudo` command, since the shared
+timestamp was cleared.
 
 The dialog also shows a **Requested by:** line so you can see where a root
 prompt originated before authorizing it. It names the nearest ancestor process

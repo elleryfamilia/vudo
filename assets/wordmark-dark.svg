@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 235" width="620" height="235" role="img" aria-label="vudo">
+  <!-- custom monoline logotype: the "v" is drawn as a checkmark -->
+  <g fill="none" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <!-- v / check -->
+    <path d="M33 103 L70 178 L126 83" stroke="#F2A33C"/>
+    <!-- u -->
+    <path d="M182 103 L182 137 A40 40 0 0 0 262 137 L262 103" stroke="#EDE6DA"/>
+    <!-- d -->
+    <circle cx="355" cy="140" r="37" stroke="#EDE6DA"/>
+    <path d="M392 53 L392 177" stroke="#EDE6DA"/>
+    <!-- o -->
+    <circle cx="485" cy="140" r="37" stroke="#EDE6DA"/>
+  </g>
+  <!-- terminal underscore cursor -->
+  <rect x="559" y="168" width="50" height="22" rx="4" fill="#F2A33C" opacity="0.9"/>
+</svg>
