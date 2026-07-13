@@ -5,8 +5,8 @@
   </picture>
 </p>
 
-<p align="center"><b><code>sudo</code>, but the password prompt is a GUI</b><br>
-so AI agents (and other TTY-less callers) can ask you for root</p>
+<p align="center"><b>Give your agent <code>sudo</code>, supervised</b><br>
+when your agent needs sudo, a GUI dialog asks <i>you</i> — password or Touch&nbsp;ID</p>
 
 Run a command as root with a graphical prompt that **previews the exact
 command** before you authorize it. A single dependency-free binary for Linux,
