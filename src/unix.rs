@@ -122,8 +122,14 @@ pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
                 130
             } else {
                 // A real failure (wrong password, not in sudoers, no askpass
-                // dialog available, ...) — relay sudo's own message.
-                eprint!("{}", String::from_utf8_lossy(&out.stderr));
+                // dialog available, ...) — relay sudo's own message, and never
+                // fail without saying something.
+                let msg = String::from_utf8_lossy(&out.stderr);
+                if msg.trim().is_empty() {
+                    eprintln!("vudo: authorization failed");
+                } else {
+                    eprint!("{msg}");
+                }
                 out.status.code().unwrap_or(1)
             };
             if !cache {
@@ -228,8 +234,11 @@ impl AskpassWrapper {
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
 
         let file = dir.join("askpass");
+        // Assignment and export are separate statements: POSIX leaves it
+        // unspecified whether `VAR=x exec cmd` exports VAR (exec is a special
+        // built-in), even though common shells do.
         let script = format!(
-            "#!/bin/sh\nVUDO_CANCEL_FLAG={} exec {} __askpass \"$@\"\n",
+            "#!/bin/sh\nVUDO_CANCEL_FLAG={}\nexport VUDO_CANCEL_FLAG\nexec {} __askpass \"$@\"\n",
             crate::quote::shell_quote(&dir.join("cancelled").to_string_lossy()),
             crate::quote::shell_quote(&exe.to_string_lossy())
         );
