@@ -103,8 +103,10 @@ esac
 
 # macOS: offer to enable Touch ID for sudo. stdin is the piped script under
 # `curl | sh`, so read the answer from the terminal directly; skip silently if
-# there's no terminal (non-interactive install).
-if [ "$os" = "Darwin" ] && [ -r /dev/tty ]; then
+# there's no terminal (non-interactive install). Probe /dev/tty by opening it:
+# `[ -r /dev/tty ]` only checks permissions and passes even with no
+# controlling terminal, where the write below would abort the script (set -e).
+if [ "$os" = "Darwin" ] && { : < /dev/tty; } 2>/dev/null; then
   printf 'vudo: enable Touch ID for sudo now? [y/N] ' > /dev/tty
   reply=''
   read -r reply < /dev/tty || reply=''
