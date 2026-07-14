@@ -109,7 +109,10 @@ if [ "$os" = "Darwin" ] && [ -r /dev/tty ]; then
   reply=''
   read -r reply < /dev/tty || reply=''
   case "$reply" in
-    y | Y | yes | Yes) "$INSTALL_DIR/vudo" --setup-touch-id ;;
+    # vudo is already installed at this point, so a failed or cancelled setup
+    # must not abort the installer (set -e) — report it and move on.
+    y | Y | yes | Yes) "$INSTALL_DIR/vudo" --setup-touch-id \
+      || info "Touch ID setup didn't finish — run 'vudo --setup-touch-id' anytime" ;;
     *) info "skipped Touch ID setup — run 'vudo --setup-touch-id' anytime" ;;
   esac
 fi

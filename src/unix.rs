@@ -34,7 +34,16 @@ pub fn askpass_mode() -> ! {
             let _ = std::io::stdout().write_all(p.as_bytes());
             std::process::exit(0);
         }
-        None => std::process::exit(1), // cancelled -> auth failure
+        None => {
+            // Leave a flag so the parent vudo can tell an explicit cancel
+            // apart from a failed authentication (the path is baked into the
+            // wrapper script) and print one clean message instead of sudo's
+            // askpass complaints.
+            if let Ok(flag) = std::env::var("VUDO_CANCEL_FLAG") {
+                let _ = std::fs::write(flag, b"");
+            }
+            std::process::exit(1)
+        }
     }
 }
 
@@ -86,19 +95,60 @@ pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
         }
     };
 
+    let sudo_env = [
+        ("SUDO_ASKPASS", wrapper.path()),
+        ("VUDO_PREVIEW", preview),
+        ("VUDO_CALLER", caller.as_str()),
+        ("VUDO_INTERACTIVE", interactive_env),
+        ("VUDO_CACHE", if cache { "1" } else { "0" }),
+    ];
+
+    // Authorize up front with `sudo -A -v`, stderr captured: when the user
+    // cancels the dialog, sudo would otherwise print its own two-line askpass
+    // complaint ("no password was provided" / "a password is required"). The
+    // askpass helper marks a cancel via the wrapper's flag file, and we print
+    // one clean line instead. stdin stays inherited so this validates the same
+    // tty-keyed timestamp record the command below will use.
+    let mut auth = Command::new("sudo");
+    auth.args(["-A", "-v"]).stdin(Stdio::inherit());
+    for (k, v) in &sudo_env {
+        auth.env(k, v);
+    }
+    match auth.output() {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            let code = if wrapper.cancelled() {
+                eprintln!("vudo: cancelled");
+                130
+            } else {
+                // A real failure (wrong password, not in sudoers, no askpass
+                // dialog available, ...) — relay sudo's own message, and never
+                // fail without saying something.
+                let msg = String::from_utf8_lossy(&out.stderr);
+                if msg.trim().is_empty() {
+                    eprintln!("vudo: authorization failed");
+                } else {
+                    eprint!("{msg}");
+                }
+                out.status.code().unwrap_or(1)
+            };
+            if !cache {
+                reset_sudo_timestamp();
+            }
+            return code;
+        }
+        Err(e) => {
+            eprintln!("vudo: failed to run sudo: {e}");
+            return 127;
+        }
+    }
+
+    // Credentials were just validated, so this normally runs with no further
+    // prompt. Keep -A (not -n) so setups where the timestamp doesn't stick
+    // (e.g. `timestamp_timeout=0`) get another dialog instead of a hard error.
     let mut args = vec!["-A".to_string(), "--".to_string()];
     args.extend_from_slice(cmd);
-    let code = run_inherit(
-        "sudo",
-        &args,
-        &[
-            ("SUDO_ASKPASS", wrapper.path()),
-            ("VUDO_PREVIEW", preview),
-            ("VUDO_CALLER", caller.as_str()),
-            ("VUDO_INTERACTIVE", interactive_env),
-            ("VUDO_CACHE", if cache { "1" } else { "0" }),
-        ],
-    );
+    let code = run_inherit("sudo", &args, &sudo_env);
 
     // Default mode: don't leave a cached credential window open afterwards —
     // the next privileged action must re-authorize. In cache mode we keep the
@@ -184,8 +234,12 @@ impl AskpassWrapper {
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
 
         let file = dir.join("askpass");
+        // Assignment and export are separate statements: POSIX leaves it
+        // unspecified whether `VAR=x exec cmd` exports VAR (exec is a special
+        // built-in), even though common shells do.
         let script = format!(
-            "#!/bin/sh\nexec {} __askpass \"$@\"\n",
+            "#!/bin/sh\nVUDO_CANCEL_FLAG={}\nexport VUDO_CANCEL_FLAG\nexec {} __askpass \"$@\"\n",
+            crate::quote::shell_quote(&dir.join("cancelled").to_string_lossy()),
             crate::quote::shell_quote(&exe.to_string_lossy())
         );
         std::fs::write(&file, script)?;
@@ -195,6 +249,11 @@ impl AskpassWrapper {
 
     fn path(&self) -> &str {
         self.file.to_str().unwrap_or("")
+    }
+
+    /// True if the askpass helper recorded an explicit user cancel.
+    fn cancelled(&self) -> bool {
+        self.dir.join("cancelled").exists()
     }
 }
 
