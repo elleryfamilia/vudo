@@ -58,6 +58,14 @@ you. After that, vudo shows its command-preview confirmation and lets sudo
 raise the system **Touch ID** sheet instead of a password dialog. (Works in a
 local terminal session, not over SSH.)
 
+If you still get a password dialog afterwards, first check whether plain sudo
+shows the sheet: run `sudo -k; sudo -v` in a fresh terminal window. If it
+doesn't either, something in the environment is blocking `pam_tid` — it can't
+raise a sheet inside tmux/screen, over SSH, with the MacBook lid closed, or in
+iTerm2 sessions running under its session-restoration daemon (Settings →
+Advanced → "Allow sessions to survive logging out and back in" — set it to No
+and restart iTerm2).
+
 **Windows — one line** (PowerShell):
 
 ```powershell
