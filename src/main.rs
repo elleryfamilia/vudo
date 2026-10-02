@@ -5,7 +5,10 @@
 //! rather than drawing our own password field:
 //!   * Linux — `sudo -A` with an askpass helper backed by zenity / kdialog /
 //!     pinentry. Keeps the command's stdin/tty free so interactive root
-//!     commands (e.g. `pacman -Syu`) still work.
+//!     commands (e.g. `pacman -Syu`) still work. When a PAM module can
+//!     authorize without typed input (pam_fprintd, pam_u2f), vudo shows the
+//!     preview itself, then a live "touch the reader" notice, since sudo
+//!     never raises the askpass dialog in that flow.
 //!   * macOS — `sudo` via Touch ID (`pam_tid`) when configured, else an
 //!     osascript password dialog.
 //!   * Windows — UAC: PowerShell `Start-Process -Verb RunAs`, with a preview

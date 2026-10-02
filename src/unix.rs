@@ -14,6 +14,14 @@ use std::process::{Command, Stdio};
 
 /// Entry point when sudo execs us as the askpass helper.
 pub fn askpass_mode() -> ! {
+    // First act: record that sudo fell back to asking for a typed password.
+    // The parent vudo uses this to dismiss the "touch the reader" notice —
+    // the biometric is no longer what will authorize this command, and that
+    // notice must not sit beside the password dialog.
+    if let Ok(flag) = std::env::var("VUDO_ASKPASS_FLAG") {
+        let _ = std::fs::write(flag, b"");
+    }
+
     let preview = std::env::var("VUDO_PREVIEW").unwrap_or_else(|_| "a command".to_string());
     let caller = std::env::var("VUDO_CALLER").unwrap_or_else(|_| "unknown".to_string());
     let interactive = match std::env::var("VUDO_INTERACTIVE").as_deref() {
@@ -132,12 +140,18 @@ pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
 
     // On the silent-auth path nothing else on screen tells the user to touch
     // the reader while sudo waits for a finger, so raise our own notice and
-    // take it down the moment auth finishes.
+    // take it down the moment auth finishes — or the moment PAM falls back to
+    // a password prompt, so the notice never sits beside the password dialog
+    // insisting on the sensor.
     #[cfg(target_os = "linux")]
     let indicator = silent_auth_hint.map(crate::linux::auth_indicator);
+    #[cfg(target_os = "linux")]
+    if let Some(indicator) = &indicator {
+        indicator.watch_askpass_flag(wrapper.askpass_fired_path());
+    }
     let auth_out = auth.output();
     #[cfg(target_os = "linux")]
-    if let Some(indicator) = indicator {
+    if let Some(indicator) = &indicator {
         indicator.dismiss();
     }
     match auth_out {
@@ -264,8 +278,9 @@ impl AskpassWrapper {
         // unspecified whether `VAR=x exec cmd` exports VAR (exec is a special
         // built-in), even though common shells do.
         let script = format!(
-            "#!/bin/sh\nVUDO_CANCEL_FLAG={}\nexport VUDO_CANCEL_FLAG\nexec {} __askpass \"$@\"\n",
+            "#!/bin/sh\nVUDO_CANCEL_FLAG={}\nVUDO_ASKPASS_FLAG={}\nexport VUDO_CANCEL_FLAG\nexport VUDO_ASKPASS_FLAG\nexec {} __askpass \"$@\"\n",
             crate::quote::shell_quote(&dir.join("cancelled").to_string_lossy()),
+            crate::quote::shell_quote(&dir.join("askpass-fired").to_string_lossy()),
             crate::quote::shell_quote(&exe.to_string_lossy())
         );
         std::fs::write(&file, script)?;
@@ -275,6 +290,12 @@ impl AskpassWrapper {
 
     fn path(&self) -> &str {
         self.file.to_str().unwrap_or("")
+    }
+
+    /// Path of the "sudo fell back to a password prompt" flag (written by
+    /// `askpass_mode` the moment the helper runs).
+    fn askpass_fired_path(&self) -> std::path::PathBuf {
+        self.dir.join("askpass-fired")
     }
 
     /// True if the askpass helper recorded an explicit user cancel.

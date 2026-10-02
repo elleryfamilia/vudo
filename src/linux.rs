@@ -86,8 +86,12 @@ pub fn confirm(
             "--ok-label=Run as root".to_string(),
             "--cancel-label=Cancel".to_string(),
         ];
+        // --window-icon, not --icon: --icon is zenity-4 only and a hard
+        // option-parse failure on zenity 3 (Debian 12, older Ubuntu) — which
+        // would read as "cancelled" here and permanently break elevation.
+        // --window-icon works on both; zenity 4 just deprecation-warns.
         if let Some(p) = crate::icon::path() {
-            args.push(format!("--icon={p}"));
+            args.push(format!("--window-icon={p}"));
         }
         return Command::new("zenity")
             .args(args)
@@ -156,10 +160,38 @@ pub fn confirm(
 /// no-match asks for another touch, and a match switches to "✓ Authorized"
 /// and lets the bar sweep to 100% (--auto-close) — the dialog removes itself
 /// the instant auth finishes.
+///
+/// The notice is advisory only. D-Bus signals on the system bus can be
+/// emitted by any local process, so nothing security-relevant is ever wired
+/// to it: PAM/fprintd decide authentication, and vudo relays sudo's exit
+/// status. Worst case a spoofed signal closes a dialog early or shows a
+/// misleading string.
+///
+/// If the biometric goes unanswered, PAM falls back to a password prompt —
+/// sudo invokes the askpass helper, which touches a flag file
+/// (`watch_askpass_flag`) and this notice is dismissed immediately, so it
+/// never competes with (or contradicts) the password dialog.
 pub struct AuthIndicator {
-    /// Dialog processes still running when auth ends get killed.
-    dialog: Option<Child>,
+    /// Dialog/monitor processes, shared with the fallback watcher thread;
+    /// `take()` under the lock makes dismissal idempotent whichever side
+    /// gets there first.
+    procs: std::sync::Arc<std::sync::Mutex<Option<Box<IndicatorProcs>>>>,
+}
+
+struct IndicatorProcs {
+    dialog: Child,
     monitor: Option<Child>,
+}
+
+impl IndicatorProcs {
+    fn kill_all(&mut self) {
+        let _ = self.dialog.kill();
+        let _ = self.dialog.wait();
+        if let Some(mut monitor) = self.monitor.take() {
+            let _ = monitor.kill();
+            let _ = monitor.wait();
+        }
+    }
 }
 
 /// Show the notice while sudo authenticates. Never blocks, never fails the
@@ -202,7 +234,9 @@ pub fn auth_indicator(hint: &str) -> AuthIndicator {
             format!("--text={text}"),
         ];
         if let Some(p) = icon.clone().or_else(crate::icon::path) {
-            args.push(format!("--icon={p}"));
+            // --window-icon over --icon: works on zenity 3 and 4 alike (see
+            // confirm() for the reasoning).
+            args.push(format!("--window-icon={p}"));
         }
         Command::new("zenity")
             .args(args)
@@ -233,14 +267,16 @@ pub fn auth_indicator(hint: &str) -> AuthIndicator {
         None
     };
 
-    let mut indicator = AuthIndicator {
-        dialog,
-        monitor: None,
-    };
+    let mut procs = dialog.map(|dialog| {
+        Box::new(IndicatorProcs {
+            dialog,
+            monitor: None,
+        })
+    });
 
     // Live sensor feedback needs both a dialog we can update (yad/zenity) and
     // the fprintd signal stream.
-    if indicator.dialog.as_ref().is_some_and(|c| c.stdin.is_some()) && have("dbus-monitor") {
+    if procs.as_ref().is_some_and(|p| p.dialog.stdin.is_some()) && have("dbus-monitor") {
         if let Ok(mut monitor) = Command::new("dbus-monitor")
             .arg("--system")
             .arg("type='signal',interface='net.reactivated.Fprint.Device',member='VerifyStatus'")
@@ -248,32 +284,55 @@ pub fn auth_indicator(hint: &str) -> AuthIndicator {
             .stderr(Stdio::null())
             .spawn()
         {
-            let feed = indicator.dialog.as_mut().and_then(|c| c.stdin.take());
+            let feed = procs.as_mut().and_then(|p| p.dialog.stdin.take());
             let stdout = monitor.stdout.take();
             if let (Some(feed), Some(stdout)) = (feed, stdout) {
                 std::thread::spawn(move || watch_verify(stdout, feed));
-                indicator.monitor = Some(monitor);
+                procs.as_mut().unwrap().monitor = Some(monitor);
             }
         }
     }
 
-    indicator
+    AuthIndicator {
+        procs: std::sync::Arc::new(std::sync::Mutex::new(procs)),
+    }
 }
 
 impl AuthIndicator {
-    /// Remove the notice: sudo's auth finished (succeeded, failed, or fell
-    /// back to a password prompt). Live updates usually closed the dialog
-    /// already on a match ("✓ Authorized" + auto-close); killing covers
-    /// every other exit.
-    pub fn dismiss(self) {
-        if let Some(mut dialog) = self.dialog {
-            let _ = dialog.kill();
-            let _ = dialog.wait();
-        }
-        if let Some(mut monitor) = self.monitor {
-            let _ = monitor.kill();
-            let _ = monitor.wait();
-        }
+    /// Remove the notice: sudo's auth finished (succeeded or failed), or the
+    /// password fallback began ([`Self::watch_askpass_flag`]). Live updates
+    /// usually closed the dialog already on a match ("✓ Authorized" +
+    /// auto-close); killing covers every other exit. Idempotent.
+    pub fn dismiss(&self) {
+        let Some(mut procs) = self.procs.lock().ok().and_then(|mut guard| guard.take()) else {
+            return;
+        };
+        procs.kill_all();
+    }
+
+    /// Dismiss the notice as soon as the askpass helper runs — i.e. the
+    /// moment PAM falls back to asking for a password. The helper touches
+    /// `flag` on entry (see `unix::askpass_mode`); this poller watches for
+    /// it so the "touch the reader" notice never sits beside the password
+    /// dialog telling the user to do the wrong thing. Also exits when the
+    /// notice was dismissed by the parent (auth finished some other way).
+    pub fn watch_askpass_flag(&self, flag: std::path::PathBuf) {
+        let procs = std::sync::Arc::clone(&self.procs);
+        std::thread::spawn(move || loop {
+            if flag.exists() {
+                let Some(mut procs) = procs.lock().ok().and_then(|mut guard| guard.take()) else {
+                    return;
+                };
+                procs.kill_all();
+                return;
+            }
+            // Parent already dismissed (auth finished): stop polling.
+            let taken = procs.lock().map(|guard| guard.is_none()).unwrap_or(true);
+            if taken {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        });
     }
 }
 
@@ -450,12 +509,17 @@ fn pam_auth_line(rest: &[&str], dir: &Path, visited: &mut Vec<String>) -> Option
         return module.and_then(|f| pam_allows_silent_auth(dir, f, visited));
     }
 
-    // Only a module that can complete the stack on its own (sufficient, or a
-    // bracketed control whose success action is `done`) can skip the askpass
-    // dialog. With `required`/`requisite`/`optional` a password is still
-    // needed later, so the preview stays where it belongs.
+    // Only a module that can complete the stack on its own can skip the
+    // askpass dialog. With `required`/`requisite`/`optional` a password is
+    // still needed later, so the preview stays where it belongs.
+    // Known limitation: a `success=N` jump control (`[success=1
+    // default=ignore]`, the passwordless-with-fallback idiom) is *not*
+    // detected — knowing where the jump lands would need full stack
+    // evaluation, and those setups keep the pre-existing behavior (no extra
+    // confirm dialog). Also, `done` must be the *success* action:
+    // `[auth_err=done]` wouldn't authorize alone, so it must not count.
     let finishes_stack =
-        control == "sufficient" || (control.starts_with('[') && control.contains("done"));
+        control == "sufficient" || (control.starts_with('[') && control.contains("success=done"));
     if finishes_stack {
         if let Some(m) = module {
             if let Some((_, hint)) = SILENT_AUTH_MODULES
@@ -602,11 +666,16 @@ fn pinentry_confirm(bin: &str, body: &str) -> bool {
     parse_pinentry_confirm(&out)
 }
 
-/// Confirmed iff a second OK follows the greeting: one OK for the Assuan
-/// greeting, one for the CONFIRM itself. An ERR in place of the second (user
-/// declined, or no dialog could be shown) means not confirmed.
+/// Confirmed iff the response is unambiguous: at least two OK lines (the
+/// Assuan greeting plus CONFIRM's own OK — BYE's trailing "OK closing
+/// connection" makes three) and no ERR line anywhere. Any ERR — the user
+/// declined, the backend doesn't implement CONFIRM, or the transport broke —
+/// means not confirmed: fail closed, since the alternative is treating a
+/// refusal as authorization. (A long preview can also overflow libassuan's
+/// line limit and come back as ERR; declining there too is the safe side.)
 fn parse_pinentry_confirm(out: &str) -> bool {
     out.lines().filter(|l| l.starts_with("OK")).count() >= 2
+        && !out.lines().any(|l| l.starts_with("ERR"))
 }
 
 /// Reassemble the PIN from an Assuan response. A long PIN can arrive across
@@ -763,6 +832,21 @@ session\t\tinclude\t\tsystem-auth
     }
 
     #[test]
+    fn done_on_a_failure_action_does_not_count() {
+        // `done` as a *failure* action (auth_err=done) can't authorize alone,
+        // so it must not trigger the confirm dialog.
+        let dir = scratch_pam(
+            "bracketed-err-done",
+            &[(
+                "sudo",
+                "auth [success=ignore auth_err=done] pam_fprintd.so\nauth required pam_unix.so\n",
+            )],
+        );
+        assert_eq!(sniff(&dir), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn substack_include_is_followed() {
         let dir = scratch_pam(
             "substack",
@@ -824,12 +908,21 @@ session\t\tinclude\t\tsystem-auth
 
     #[test]
     fn pinentry_confirm_parses_ok_and_err() {
-        // greeting + CONFIRM's OK => confirmed
-        assert!(parse_pinentry_confirm("OK Pleased to meet you\nOK\nOK\n"));
-        // greeting only => declined ("ERR ... not confirmed")
-        assert!(!parse_pinentry_confirm(
-            "OK Pleased to meet you\nERR 83886179 not confirmed\n"
+        // Real transcripts: every session ends with BYE, and libassuan always
+        // acknowledges it with a final "OK closing connection" — including a
+        // declined CONFIRM, which must NOT parse as confirmed.
+        assert!(parse_pinentry_confirm(
+            "OK Pleased to meet you\nOK\nOK closing connection\n"
         ));
+        assert!(!parse_pinentry_confirm(
+            "OK Pleased to meet you\nERR 83886179 not confirmed\nOK closing connection\n"
+        ));
+        // Backend doesn't implement CONFIRM, or the transport broke mid-way:
+        // fail closed.
+        assert!(!parse_pinentry_confirm(
+            "OK Pleased to meet you\nERR 83886179 unknown IPC command\n"
+        ));
+        assert!(!parse_pinentry_confirm("OK Pleased to meet you\n"));
     }
 
     // fprintd signal parsing: samples of real dbus-monitor output.
@@ -930,7 +1023,11 @@ session\t\tinclude\t\tsystem-auth
         for r in ["verify-disconnected", "verify-unknown-error"] {
             let mut w = VerifyWatcher::default();
             w.feed(SIGNAL_HEADER);
-            assert_eq!(w.feed(&format!("   string \"{r}\"")), None, "{r} should be ignored");
+            assert_eq!(
+                w.feed(&format!("   string \"{r}\"")),
+                None,
+                "{r} should be ignored"
+            );
         }
     }
 

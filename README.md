@@ -100,6 +100,10 @@ fingerprint glyph appears inside the dialog; with plain zenity it rides on
 the window icon. If the biometric isn't answered, the notice fades and the
 password dialog appears.
 
+The notice is advisory only — PAM and fprintd decide authentication, vudo
+relays sudo's exit status. When PAM falls back to the password dialog (finger
+unanswered), the notice is dismissed the moment sudo asks for a password.
+
 [yad]: https://github.com/v1cont/yad
 
 **Windows — one line** (PowerShell):
