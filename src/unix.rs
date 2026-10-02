@@ -87,6 +87,21 @@ pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
         return 130;
     }
 
+    // Same gap on Linux: a PAM module that authorizes without typed input
+    // (pam_fprintd, pam_u2f) means sudo never invokes our askpass helper —
+    // the dialog that normally carries the command preview. Show the preview
+    // ourselves first, mirroring the Touch ID flow above. Keep the hint: it
+    // drives the "now touch the reader" notice shown during the auth below.
+    #[cfg(target_os = "linux")]
+    let silent_auth_hint = crate::linux::silent_auth_hint();
+    #[cfg(target_os = "linux")]
+    if let Some(hint) = silent_auth_hint {
+        if !crate::linux::confirm(preview, &caller, Some(interactive), cache, hint) {
+            eprintln!("vudo: cancelled");
+            return 130;
+        }
+    }
+
     let wrapper = match AskpassWrapper::new() {
         Ok(w) => w,
         Err(e) => {
@@ -114,7 +129,18 @@ pub fn elevate(cmd: &[String], preview: &str, cache: bool) -> i32 {
     for (k, v) in &sudo_env {
         auth.env(k, v);
     }
-    match auth.output() {
+
+    // On the silent-auth path nothing else on screen tells the user to touch
+    // the reader while sudo waits for a finger, so raise our own notice and
+    // take it down the moment auth finishes.
+    #[cfg(target_os = "linux")]
+    let indicator = silent_auth_hint.map(crate::linux::auth_indicator);
+    let auth_out = auth.output();
+    #[cfg(target_os = "linux")]
+    if let Some(indicator) = indicator {
+        indicator.dismiss();
+    }
+    match auth_out {
         Ok(out) if out.status.success() => {}
         Ok(out) => {
             let code = if wrapper.cancelled() {

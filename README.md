@@ -66,6 +66,42 @@ iTerm2 sessions running under its session-restoration daemon (Settings →
 Advanced → "Allow sessions to survive logging out and back in" — set it to No
 and restart iTerm2).
 
+### Linux: fingerprint readers & security keys
+
+If sudo can authorize you without typing — a fingerprint reader (`pam_fprintd`)
+or a security key (`pam_u2f`) — vudo shows its command-preview confirmation
+first, then you touch the reader / tap the key. If the biometric isn't
+answered, sudo falls back to the normal password dialog.
+
+To set up fingerprint auth (most distros):
+
+```sh
+fprintd-enroll                                   # register a finger
+sudo $EDITOR /etc/pam.d/system-auth              # add, BEFORE the pam_unix line:
+#   auth  sufficient  pam_fprintd.so  try_first_pass
+```
+
+Why the extra confirmation dialog? A biometric module never asks for a typed
+secret, so `sudo -A` never invokes vudo's askpass helper — the dialog that
+normally carries the command preview. Without this step you'd authorize with a
+finger, but never see *what* you authorized. vudo detects the setup by reading
+sudo's effective PAM stack (following `include`/`substack`/`@include`
+directives) and only counts modules whose control flag can complete
+authentication on their own (`sufficient`, or a bracketed flag with a `done`
+success action).
+
+While sudo waits for the finger, PAM's own prompt ("Place your finger on the
+fingerprint reader") goes to the caller's stdout — invisible without a
+terminal. So after you confirm, vudo raises a fingerprint notice instead:
+a pulsing dialog that reacts live to the sensor via fprintd's D-Bus signals —
+"Not that finger — touch again", "Press flat and hold a moment", and on a
+match "✓ Authorized" with the bar sweeping shut. With [yad] installed the
+fingerprint glyph appears inside the dialog; with plain zenity it rides on
+the window icon. If the biometric isn't answered, the notice fades and the
+password dialog appears.
+
+[yad]: https://github.com/v1cont/yad
+
 **Windows — one line** (PowerShell):
 
 ```powershell
@@ -103,7 +139,7 @@ to each OS's native agent, which is more secure and familiar:
 
 | Platform | Mechanism |
 |----------|-----------|
-| Linux    | `sudo -A` with an askpass helper backed by **zenity → kdialog → pinentry** |
+| Linux    | `sudo -A` with an askpass helper backed by **zenity → kdialog → pinentry**; with a fingerprint reader / security key (`pam_fprintd`, `pam_u2f`), a preview confirmation then lets PAM authorize biometrically |
 | macOS    | `sudo` via **Touch ID** (`pam_tid`) when configured, else an **osascript** password dialog |
 | Windows  | **UAC** via PowerShell `Start-Process -Verb RunAs`, with the preview shown as a message box first |
 
@@ -115,7 +151,8 @@ straight to sudo; it never touches argv, the environment, disk, or a log.
 **Every command is authorized on its own.** By default vudo does not ride
 sudo's cached credential timestamp: it clears the timestamp before and after
 each run, so approving one command never grants a silent pass to the next. You
-authorize (dialog or Touch ID) every single time — which is the whole point
+authorize (dialog, Touch ID, or fingerprint) every single time — which is the
+whole point
 when the caller might be an automation or agent. A side effect: a plain `sudo`
 you run in a terminal will also re-prompt after a `vudo` command, since the
 shared timestamp was cleared.
