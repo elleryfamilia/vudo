@@ -28,11 +28,12 @@ pub fn ask_password(
             "--title=vudo".to_string(),
             format!("--text={body}"),
         ];
-        // Best-effort brand icon on the window (zenity can't put one in the
-        // entry body). `--icon` is the current option; `--window-icon` is
-        // deprecated in zenity 4 and prints a warning.
+        // --window-icon, not --icon: --icon is zenity-4 only and a hard
+        // option-parse failure on zenity 3 (Debian 12, older Ubuntu), where
+        // it would read as "cancelled" and break elevation. --window-icon
+        // works on both; zenity 4 just deprecation-warns.
         if let Some(p) = crate::icon::path() {
-            args.push(format!("--icon={p}"));
+            args.push(format!("--window-icon={p}"));
         }
         return run_capture("zenity", &args);
     }
@@ -55,7 +56,7 @@ pub fn ask_password(
         return pinentry_ask(&pe, &body);
     }
 
-    eprintln!("vudo: no graphical password prompt found — install zenity or kdialog");
+    eprintln!("vudo: no graphical password prompt found — install zenity, kdialog, or pinentry");
     None
 }
 
@@ -103,16 +104,16 @@ pub fn confirm(
     }
 
     if have("kdialog") {
-        let mut args = vec![
-            "--title".to_string(),
-            "vudo".to_string(),
-            "--yesno".to_string(),
-            body,
-            "--yes-label".to_string(),
-            "Run as root".to_string(),
-            "--no-label".to_string(),
-            "Cancel".to_string(),
-        ];
+        // --yes-label/--no-label are kdialog 21.08+; an older kdialog fails
+        // hard at option parsing on unknown options, which would read as
+        // "cancelled". Ask the binary instead of assuming.
+        let mut args = vec!["--title".to_string(), "vudo".to_string()];
+        if kdialog_offers_button_labels(&kdialog_help()) {
+            args.extend(["--yes-label".to_string(), "Run as root".to_string()]);
+            args.extend(["--no-label".to_string(), "Cancel".to_string()]);
+        }
+        args.push("--yesno".to_string());
+        args.push(body);
         if let Some(p) = crate::icon::path() {
             args.push("--icon".to_string());
             args.push(p);
@@ -132,7 +133,7 @@ pub fn confirm(
 
     // No dialog backend at all — the askpass password dialog would fail too,
     // so refuse rather than authorize a command nobody could have previewed.
-    eprintln!("vudo: no graphical prompt found — install zenity or kdialog");
+    eprintln!("vudo: no graphical prompt found — install zenity, kdialog, or pinentry");
     false
 }
 
@@ -215,6 +216,8 @@ pub fn auth_indicator(hint: &str) -> AuthIndicator {
         ];
         if let Some(p) = &icon {
             args.push(format!("--image={p}"));
+        }
+        if let Some(p) = icon.clone().or_else(crate::icon::path) {
             args.push(format!("--window-icon={p}"));
         }
         Command::new("yad")
@@ -445,6 +448,12 @@ const SILENT_AUTH_MODULES: &[(&str, &str)] = &[
 /// followed (`auth include system-auth` on Arch-style layouts, `@include
 /// common-auth` on Debian-style ones) since the module is rarely in the
 /// sudo file itself.
+///
+/// Ordering is deliberately not evaluated: a `sufficient` biometric line
+/// placed *after* a required password module still triggers the confirm
+/// dialog even though sudo asks for the password first. That's benign —
+/// the password dialog carries its own preview, and the notice is dismissed
+/// the moment the askpass helper runs.
 pub fn silent_auth_hint() -> Option<&'static str> {
     let mut visited = Vec::new();
     pam_allows_silent_auth(Path::new(PAM_DIR), "sudo", &mut visited)
@@ -566,6 +575,20 @@ fn have(bin: &str) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// `kdialog --help` output, empty on any failure.
+fn kdialog_help() -> String {
+    Command::new("kdialog")
+        .arg("--help")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// Whether a `kdialog --help` text advertises custom button labels.
+fn kdialog_offers_button_labels(help: &str) -> bool {
+    help.contains("--yes-label")
 }
 
 /// Pick the first pinentry that actually runs — a broken install (e.g. missing
@@ -714,6 +737,18 @@ fn assuan_decode(s: &str) -> String {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn kdialog_help_probe_matches_real_usage_text() {
+        // Modern kdialog (21.08+) advertises --yes-label in --help.
+        assert!(kdialog_offers_button_labels(
+            "Usage: kdialog [options]\n--yes-label <text>\n--yesno <text>\n"
+        ));
+        // Older kdialog: plain yes/no only — must not count.
+        assert!(!kdialog_offers_button_labels(
+            "Usage: kdialog [options]\n--yesno <text>\n--msgbox <text>\n"
+        ));
+    }
 
     // PAM-stack sniffing: scratch /etc/pam.d trees exercising the layouts we
     // claim to understand, run through the same code path the real check uses
@@ -1017,7 +1052,7 @@ session\t\tinclude\t\tsystem-auth
             w.feed(SIGNAL_HEADER);
             assert!(
                 w.feed(&format!("   string \"{r}\"")).is_some(),
-                "{r} crashed or was dropped"
+                "{r} should map to feedback"
             );
         }
         for r in ["verify-disconnected", "verify-unknown-error"] {
