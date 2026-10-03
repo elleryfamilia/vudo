@@ -273,13 +273,17 @@ impl AskpassWrapper {
         // would inherit a stale dir from a dead vudo, where a leftover
         // `cancelled` flag would read as a phantom cancel and a stale
         // `askpass-fired` would instantly dismiss the fingerprint notice.
-        // The nanosecond suffix also makes the path unguessable, so a local
+        // Nanos come from the wall clock; the in-process counter guarantees
+        // uniqueness even if two wrappers are created within one coarse
+        // clock tick. The name is also hard to guess in practice, so a local
         // user can't pre-plant a symlink there ahead of us.
+        static WRAPPER_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        dir.push(format!("vudo-{}-{nanos}", std::process::id()));
+        let seq = WRAPPER_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        dir.push(format!("vudo-{}-{nanos}-{seq}", std::process::id()));
         std::fs::create_dir_all(&dir)?;
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
 

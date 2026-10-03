@@ -102,7 +102,14 @@ fn apply(tag: &str) -> Result<String, String> {
         .ok_or("cannot locate the install directory")?
         .to_path_buf();
 
-    let tmp = std::env::temp_dir().join(format!("vudo-update-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!(
+        "vudo-update-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
     std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let _guard = TmpGuard(tmp.clone());
 

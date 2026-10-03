@@ -28,12 +28,10 @@ pub fn ask_password(
             "--title=vudo".to_string(),
             format!("--text={body}"),
         ];
-        // --window-icon, not --icon: --icon is zenity-4 only and a hard
-        // option-parse failure on zenity 3 (Debian 12, older Ubuntu), where
-        // it would read as "cancelled" and break elevation. --window-icon
-        // works on both; zenity 4 just deprecation-warns.
+        // The icon flag each zenity generation natively supports (see
+        // zenity_icon_args).
         if let Some(p) = crate::icon::path() {
-            args.push(format!("--window-icon={p}"));
+            args.extend(zenity_icon_args(&p));
         }
         return run_capture("zenity", &args);
     }
@@ -87,12 +85,12 @@ pub fn confirm(
             "--ok-label=Run as root".to_string(),
             "--cancel-label=Cancel".to_string(),
         ];
-        // --window-icon, not --icon: --icon is zenity-4 only and a hard
-        // option-parse failure on zenity 3 (Debian 12, older Ubuntu) — which
-        // would read as "cancelled" here and permanently break elevation.
-        // --window-icon works on both; zenity 4 just deprecation-warns.
+        // The icon flag each zenity generation natively supports (see
+        // zenity_icon_args) — on zenity 3 the wrong one hard-fails at option
+        // parsing, which would read as "cancelled" and permanently break
+        // elevation on biometric systems.
         if let Some(p) = crate::icon::path() {
-            args.push(format!("--window-icon={p}"));
+            args.extend(zenity_icon_args(&p));
         }
         return Command::new("zenity")
             .args(args)
@@ -237,9 +235,9 @@ pub fn auth_indicator(hint: &str) -> AuthIndicator {
             format!("--text={text}"),
         ];
         if let Some(p) = icon.clone().or_else(crate::icon::path) {
-            // --window-icon over --icon: works on zenity 3 and 4 alike (see
-            // confirm() for the reasoning).
-            args.push(format!("--window-icon={p}"));
+            // The icon flag each zenity generation natively supports (see
+            // zenity_icon_args).
+            args.extend(zenity_icon_args(&p));
         }
         Command::new("zenity")
             .args(args)
@@ -577,6 +575,45 @@ fn have(bin: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether the installed zenity accepts `--icon` — zenity 4+. Decided once
+/// per process; any doubt (older zenity, unparseable `--version` output,
+/// spawn failure) falls back to `--window-icon`, which works on both
+/// generations: zenity 3 hard-fails unknown options where zenity 4 only
+/// deprecation-warns, and the warning lands on the user's stderr in the
+/// password dialog — so prefer each generation's native option.
+fn zenity_accepts_icon_flag() -> bool {
+    static OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *OK.get_or_init(|| {
+        Command::new("zenity")
+            .arg("--version")
+            .output()
+            .ok()
+            .map(|o| zenity_version_supports_icon(&String::from_utf8_lossy(&o.stdout)))
+            .unwrap_or(false)
+    })
+}
+
+/// Major version >= 4. Anything unparseable reads as "assume old", the option
+/// that's safe everywhere.
+fn zenity_version_supports_icon(version: &str) -> bool {
+    version
+        .trim()
+        .split('.')
+        .next()
+        .and_then(|major| major.trim().parse::<u32>().ok())
+        .is_some_and(|major| major >= 4)
+}
+
+/// The icon flag the installed zenity natively supports.
+fn zenity_icon_args(icon: &str) -> Vec<String> {
+    std::iter::once(if zenity_accepts_icon_flag() {
+        format!("--icon={icon}")
+    } else {
+        format!("--window-icon={icon}")
+    })
+    .collect()
+}
+
 /// `kdialog --help` output, empty on any failure.
 fn kdialog_help() -> String {
     Command::new("kdialog")
@@ -748,6 +785,19 @@ mod tests {
         assert!(!kdialog_offers_button_labels(
             "Usage: kdialog [options]\n--yesno <text>\n--msgbox <text>\n"
         ));
+    }
+
+    #[test]
+    fn zenity_version_probe_classifies_both_generations() {
+        assert!(zenity_version_supports_icon("4.2.2\n"));
+        assert!(zenity_version_supports_icon("4\n"));
+        assert!(!zenity_version_supports_icon("3.44.3\n"));
+        assert!(
+            !zenity_version_supports_icon("zenity 3.44\n"),
+            "prefixed/unparseable → assume old"
+        );
+        assert!(!zenity_version_supports_icon(""), "no output → assume old");
+        assert!(!zenity_version_supports_icon("garbage\n"));
     }
 
     // PAM-stack sniffing: scratch /etc/pam.d trees exercising the layouts we

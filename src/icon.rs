@@ -11,23 +11,22 @@ const FINGERPRINT_PNG: &[u8] = include_bytes!("../assets/fingerprint.png");
 /// use. Returns None if it can't be written; dialogs then fall back to a stock
 /// icon.
 pub fn path() -> Option<String> {
-    materialize(ICON_PNG, "icon.png")
+    materialize_in(&cache_dir(), ICON_PNG, "icon.png")
 }
 
 /// Same as [`path`], for the fingerprint glyph shown while a biometric PAM
 /// module (pam_fprintd, pam_u2f) is waiting for a finger.
 pub fn fingerprint() -> Option<String> {
-    materialize(FINGERPRINT_PNG, "fingerprint.png")
+    materialize_in(&cache_dir(), FINGERPRINT_PNG, "fingerprint.png")
 }
 
-/// Write an embedded icon to the user cache dir, refreshing it whenever the
-/// embedded bytes change. Staleness is decided by content hash (stored in a
-/// `<name>.v` sidecar), not file size: an edit that keeps the size identical —
-/// a recolor, most palette swaps — must still refresh. Returns None if it
+/// Write an embedded icon to a cache dir, refreshing it whenever the embedded
+/// bytes change. Staleness is decided by content hash (stored in a `<name>.v`
+/// sidecar), not file size: an edit that keeps the size identical — a
+/// recolor, most palette swaps — must still refresh. Returns None if it
 /// can't be written.
-fn materialize(bytes: &[u8], name: &str) -> Option<String> {
-    let dir = cache_dir();
-    std::fs::create_dir_all(&dir).ok()?;
+fn materialize_in(dir: &std::path::Path, bytes: &[u8], name: &str) -> Option<String> {
+    std::fs::create_dir_all(dir).ok()?;
     let icon = dir.join(name);
     let version = dir.join(format!("{name}.v"));
 
@@ -74,16 +73,16 @@ mod tests {
 
     #[test]
     fn same_size_content_change_refreshes_the_cache() {
+        // Scratch cache dir injected directly, not the process env: set_var
+        // in a test races with parallel tests reading the environment.
         let dir = std::env::temp_dir().join(format!("vudo-icon-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
 
         // Materialize, then "edit" the embedded bytes keeping the size
         // identical — the old size-only check would keep the stale file.
-        std::env::set_var("XDG_CACHE_HOME", &dir);
-        let a = materialize(b"same-length-icon-v1", "glyph.png");
+        let a = materialize_in(&dir, b"same-length-icon-v1", "glyph.png");
         std::fs::write(a.unwrap(), b"XXXXXXXXXXXXXXXXXX").unwrap(); // corrupt it
-        let b = materialize(b"same-length-icon-v2", "glyph.png");
+        let b = materialize_in(&dir, b"same-length-icon-v2", "glyph.png");
         let bytes = std::fs::read(b.unwrap()).unwrap();
         assert_eq!(
             bytes, b"same-length-icon-v2",
@@ -91,15 +90,23 @@ mod tests {
         );
 
         // Unchanged bytes: no rewrite (the corrupted file survives).
-        std::fs::write(dir.join("vudo").join("glyph.png"), b"hand-edited").unwrap();
-        let _ = materialize(b"same-length-icon-v2", "glyph.png");
+        std::fs::write(dir.join("glyph.png"), b"hand-edited").unwrap();
+        let _ = materialize_in(&dir, b"same-length-icon-v2", "glyph.png");
         assert_eq!(
-            std::fs::read(dir.join("vudo").join("glyph.png")).unwrap(),
+            std::fs::read(dir.join("glyph.png")).unwrap(),
             b"hand-edited",
             "unchanged bytes must not be rewritten"
         );
 
-        std::env::remove_var("XDG_CACHE_HOME");
+        // A garbled or missing sidecar must read as stale, not fresh.
+        std::fs::write(dir.join("glyph.png.v"), b"nonsense").unwrap();
+        let _ = materialize_in(&dir, b"same-length-icon-v2", "glyph.png");
+        assert_eq!(
+            std::fs::read(dir.join("glyph.png")).unwrap(),
+            b"same-length-icon-v2",
+            "garbled sidecar must trigger a refresh"
+        );
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
