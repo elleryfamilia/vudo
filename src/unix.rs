@@ -269,7 +269,21 @@ impl AskpassWrapper {
     fn new() -> std::io::Result<Self> {
         let exe = std::env::current_exe()?;
         let mut dir = std::env::temp_dir();
-        dir.push(format!("vudo-{}", std::process::id()));
+        // Unique per invocation — pid alone is not enough: a recycled pid
+        // would inherit a stale dir from a dead vudo, where a leftover
+        // `cancelled` flag would read as a phantom cancel and a stale
+        // `askpass-fired` would instantly dismiss the fingerprint notice.
+        // Nanos come from the wall clock; the in-process counter guarantees
+        // uniqueness even if two wrappers are created within one coarse
+        // clock tick. The name is also hard to guess in practice, so a local
+        // user can't pre-plant a symlink there ahead of us.
+        static WRAPPER_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let seq = WRAPPER_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        dir.push(format!("vudo-{}-{nanos}-{seq}", std::process::id()));
         std::fs::create_dir_all(&dir)?;
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
 
@@ -307,5 +321,60 @@ impl AskpassWrapper {
 impl Drop for AskpassWrapper {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapper_script_exports_both_flags_and_reinvokes_us() {
+        let wrapper = AskpassWrapper::new().unwrap();
+        let script = std::fs::read_to_string(wrapper.path()).unwrap();
+        assert!(script.contains("VUDO_CANCEL_FLAG="), "cancel flag exported");
+        assert!(
+            script.contains("VUDO_ASKPASS_FLAG="),
+            "askpass-fired flag exported"
+        );
+        assert!(script.contains("export VUDO_ASKPASS_FLAG"));
+        assert!(
+            script.contains("__askpass"),
+            "re-invokes this binary as helper"
+        );
+        assert!(script.starts_with("#!/bin/sh\n"));
+        // The flags must point inside the wrapper's own dir…
+        assert!(script.contains(wrapper.dir.join("cancelled").to_str().unwrap()));
+        assert!(script.contains(wrapper.dir.join("askpass-fired").to_str().unwrap()));
+        // …which is what the parent then watches.
+        assert_eq!(
+            wrapper.askpass_fired_path(),
+            wrapper.dir.join("askpass-fired")
+        );
+        assert!(!wrapper.cancelled());
+    }
+
+    #[test]
+    fn wrapper_dir_is_private_and_removed_on_drop() {
+        let (dir, perms_ok) = {
+            let wrapper = AskpassWrapper::new().unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            let perms_ok = std::fs::metadata(&wrapper.dir)
+                .map(|m| m.permissions().mode() & 0o777 == 0o700)
+                .unwrap_or(false);
+            (wrapper.dir.clone(), perms_ok)
+        };
+        assert!(perms_ok, "temp dir must be 0700");
+        assert!(!dir.exists(), "drop() must remove the temp dir");
+    }
+
+    #[test]
+    fn wrapper_dirs_are_unique_per_invocation() {
+        // Back-to-back wrappers must not share a dir even within one pid:
+        // a stale `cancelled`/`askpass-fired` flag from a previous run is
+        // exactly what the unique-name scheme exists to prevent.
+        let a = AskpassWrapper::new().unwrap();
+        let b = AskpassWrapper::new().unwrap();
+        assert_ne!(a.dir, b.dir);
     }
 }
