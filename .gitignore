@@ -1,4 +1,5 @@
 /target
+/.worktrees/
 *.log
 .DS_Store
 .loadout/generated/
