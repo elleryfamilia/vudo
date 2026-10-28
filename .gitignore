@@ -1,5 +1,6 @@
 /target
 /.worktrees/
+/.hokki/
 *.log
 .DS_Store
 .loadout/generated/
